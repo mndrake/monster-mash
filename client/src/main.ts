@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import "./style.css";
 import { GameScene } from "./game/GameScene";
 import { randomRoomCode } from "./util/roomCode";
+import { MONSTER_ORDER, lookOf } from "./game/monsters";
 
 /**
  * App entry point. This wires up the plain-HTML lobby and, once you join,
@@ -12,9 +13,31 @@ import { randomRoomCode } from "./util/roomCode";
 const lobby = document.getElementById("lobby")!;
 const nameInput = document.getElementById("name") as HTMLInputElement;
 const codeInput = document.getElementById("code") as HTMLInputElement;
+const monstersEl = document.getElementById("monsters")!;
 const errorEl = document.getElementById("error")!;
 
 let game: Phaser.Game | undefined;
+
+// ---- Monster picker: one tappable card per monster type ----
+let chosenMonster = MONSTER_ORDER[0];
+MONSTER_ORDER.forEach((id) => {
+  const look = lookOf(id);
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "monster-card";
+  card.dataset.id = id;
+  card.style.setProperty("--accent", look.accent);
+  card.innerHTML = `<span class="m-emoji">${look.emoji}</span><span class="m-name">${look.name}</span><span class="m-blurb">${look.blurb}</span>`;
+  card.addEventListener("click", () => selectMonster(id));
+  monstersEl.appendChild(card);
+});
+function selectMonster(id: string) {
+  chosenMonster = id;
+  monstersEl.querySelectorAll(".monster-card").forEach((c) => {
+    c.classList.toggle("selected", (c as HTMLElement).dataset.id === id);
+  });
+}
+selectMonster(chosenMonster);
 
 // Pre-fill a random code so a solo developer can just hit "Join arena".
 codeInput.value = randomRoomCode();
@@ -61,6 +84,6 @@ function startGame() {
     lobby.style.display = "";
   });
 
-  // Start the scene and pass the chosen room code + name into create().
-  game.scene.add("GameScene", GameScene, true, { roomCode, name });
+  // Start the scene and pass the chosen room code + name + monster into create().
+  game.scene.add("GameScene", GameScene, true, { roomCode, name, monster: chosenMonster });
 }

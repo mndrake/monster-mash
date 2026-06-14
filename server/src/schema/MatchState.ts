@@ -1,5 +1,7 @@
 import { Schema, type, MapSchema } from "@colyseus/schema";
 import { Player } from "./Player";
+import { Projectile } from "./Projectile";
+import { PowerCube } from "./PowerCube";
 
 /**
  * The whole shared state of one match. Colyseus automatically sends the
@@ -17,6 +19,28 @@ export class MatchState extends Schema {
   /** The room code players typed to join (handy to display in the client). */
   @type("string") roomCode = "";
 
+  // ---- match flow ----
+  /** "countdown" | "playing" | "roundover" (see PHASE in config). */
+  @type("string") phase = "countdown";
+  /** Milliseconds left in the current phase (countdown / round-over banner). */
+  @type("number") phaseTimeLeft = 0;
+  /** How many monsters are still alive (drives the "X left" HUD). */
+  @type("number") aliveCount = 0;
+  /** Name of the last round's winner, shown on the round-over banner. */
+  @type("string") winnerName = "";
+
+  // ---- the closing poison zone (a shrinking safe rectangle) ----
+  /** The safe rectangle's bounds in world units. Outside it = poison. */
+  @type("number") safeMinX = 0;
+  @type("number") safeMinY = 0;
+  @type("number") safeMaxX = 0;
+  @type("number") safeMaxY = 0;
+
+  // ---- entities ----
   /** Every player currently in the match, keyed by their Colyseus sessionId. */
   @type({ map: Player }) players = new MapSchema<Player>();
+  /** Live shots, keyed by a server-assigned id. */
+  @type({ map: Projectile }) projectiles = new MapSchema<Projectile>();
+  /** Collectible power cubes, keyed by a server-assigned id. */
+  @type({ map: PowerCube }) cubes = new MapSchema<PowerCube>();
 }

@@ -127,3 +127,92 @@ button.primary:active {
   color: #ff6b6b;
   font-size: 14px;
 }
+
+/* ---- Monster picker (lobby) ---- */
+.monsters {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.monster-card {
+  --accent: #5b6cff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 6px;
+  border-radius: 12px;
+  border: 2px solid #33335a;
+  background: #10101a;
+  color: #eaeaf2;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.12s, background 0.12s, transform 0.05s;
+}
+
+.monster-card:active {
+  transform: scale(0.97);
+}
+
+.monster-card.selected {
+  border-color: var(--accent);
+  background: #181830;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.monster-card .m-emoji {
+  font-size: 30px;
+  line-height: 1;
+}
+
+.monster-card .m-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.monster-card .m-blurb {
+  font-size: 10px;
+  color: #9a9ac0;
+  line-height: 1.2;
+}
+
+/* ---- In-game SUPER button (created by Controls) ---- */
+.super-btn {
+  position: fixed;
+  right: 7%;
+  bottom: 44%;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  border: 3px solid #4a4a6a;
+  background: rgba(40, 40, 70, 0.55);
+  color: #8a8ab0;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 1px;
+  z-index: 5;
+  cursor: pointer;
+  touch-action: none;
+  transition: transform 0.05s;
+}
+
+.super-btn:active {
+  transform: scale(0.93);
+}
+
+/* Charged and ready: glow gold and become tappable-looking. */
+.super-btn.ready {
+  border-color: #ffd740;
+  background: radial-gradient(circle at 50% 40%, #ffe98a, #ffb300);
+  color: #1b1b2f;
+  box-shadow: 0 0 18px 4px rgba(255, 200, 60, 0.6);
+  animation: superpulse 1s ease-in-out infinite;
+}
+
+@keyframes superpulse {
+  0%, 100% { box-shadow: 0 0 16px 3px rgba(255, 200, 60, 0.55); }
+  50% { box-shadow: 0 0 26px 8px rgba(255, 200, 60, 0.85); }
+}

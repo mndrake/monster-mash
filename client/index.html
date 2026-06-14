@@ -20,11 +20,17 @@
     <div id="lobby">
       <div class="panel">
         <h1>Monster Mash</h1>
-        <p class="tagline">Same wifi, same code, same arena.</p>
+        <p class="tagline">Showdown brawl — last monster standing wins.</p>
 
         <label>
           Your name
           <input id="name" type="text" maxlength="16" placeholder="Player" autocomplete="off" />
+        </label>
+
+        <label>
+          Pick your monster
+          <!-- Filled in by main.ts from the shared monster list. Tap to choose. -->
+          <div id="monsters" class="monsters"></div>
         </label>
 
         <label>

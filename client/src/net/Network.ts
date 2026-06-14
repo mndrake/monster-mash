@@ -6,40 +6,83 @@ import { SERVER_URL, ROOM_NAME } from "../config";
  *  THE TRANSPORT BOUNDARY
  * ============================================================================
  * This file is the ONLY place in the client that knows we're using Colyseus.
- * The game code (Phaser scenes) talks to this class through a small, plain
- * interface: "join", "send my input", "tell me when players change".
+ * The game code (Phaser scenes) talks to this class through small, plain
+ * snapshots and callbacks: "join", "send my input/aim/fire", "tell me when
+ * players, projectiles, or cubes change".
  *
  * If we later swap the backend (e.g. to Cloudflare Durable Objects), only this
  * file needs to change — the game code keeps working unchanged.
  * ============================================================================
  */
 
-/** A plain snapshot of one player. The game renders from these — no Colyseus types leak out. */
+/** A plain snapshot of one monster. The game renders from these — no Colyseus types leak out. */
 export interface PlayerSnapshot {
   id: string;
   x: number;
   y: number;
   name: string;
   color: string;
+  monster: string;
+  facing: number;
+  health: number;
+  maxHealth: number;
+  ammo: number;
+  ammoMax: number;
+  super: number;
+  cubes: number;
+  alive: boolean;
+  rank: number;
+  kills: number;
+}
+
+/** A shot in flight. */
+export interface ProjectileSnapshot {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+  kind: string;
+}
+
+/** A collectible power cube. */
+export interface CubeSnapshot {
+  id: string;
+  x: number;
+  y: number;
+}
+
+/** Everything about the match flow + poison zone, polled each frame by the game. */
+export interface MatchInfo {
+  phase: string;
+  phaseTimeLeft: number;
+  aliveCount: number;
+  winnerName: string;
+  safeMinX: number;
+  safeMinY: number;
+  safeMaxX: number;
+  safeMaxY: number;
 }
 
 /** Callbacks the game provides so it can react to what the server tells us. */
 export interface NetEvents {
   /** Fires once, when we've joined and received the arena size. */
   onJoin: (arenaWidth: number, arenaHeight: number) => void;
-  /** A player appeared (could be us or someone else). */
   onPlayerAdd: (player: PlayerSnapshot) => void;
-  /** A player's position (or other field) changed on the server. */
   onPlayerChange: (player: PlayerSnapshot) => void;
-  /** A player left. */
   onPlayerRemove: (id: string) => void;
+  onProjectileAdd: (proj: ProjectileSnapshot) => void;
+  onProjectileMove: (proj: ProjectileSnapshot) => void;
+  onProjectileRemove: (id: string) => void;
+  onCubeAdd: (cube: CubeSnapshot) => void;
+  onCubeRemove: (id: string) => void;
 }
 
 export class Network {
   private client: Client;
   private room?: Room;
 
-  /** Our own player id, so the game knows which player is "me". */
+  /** Our own player id, so the game knows which monster is "me". */
   selfId = "";
 
   constructor() {
@@ -57,16 +100,18 @@ export class Network {
   }
 
   /**
-   * Join (or create) the room with the given code, then wire up the server's
-   * state changes to the game's callbacks.
+   * Join (or create) the room with the given code + chosen monster, then wire
+   * the server's state changes to the game's callbacks.
    */
-  async join(roomCode: string, name: string, events: NetEvents): Promise<void> {
-    // joinOrCreate + the server's filterBy(["roomCode"]) means: join the room
-    // with this code if it exists, otherwise create it.
-    this.room = await this.client.joinOrCreate(ROOM_NAME, { roomCode, name });
+  async join(
+    roomCode: string,
+    name: string,
+    monster: string,
+    events: NetEvents,
+  ): Promise<void> {
+    this.room = await this.client.joinOrCreate(ROOM_NAME, { roomCode, name, monster });
     this.selfId = this.room.sessionId;
 
-    // getStateCallbacks is the Colyseus 0.16 way to listen for state changes.
     const $ = getStateCallbacks(this.room);
 
     // Deliver the arena size to the game as soon as the first state arrives.
@@ -74,25 +119,61 @@ export class Network {
       events.onJoin(state.width, state.height);
     });
 
-    // When a player is added to the shared map...
+    // ---- players ----
     $(this.room.state).players.onAdd((player, id) => {
-      events.onPlayerAdd(snapshot(id, player));
-      // ...and whenever that player's fields change (every tick they move),
-      // tell the game so it can update where the sprite is heading.
-      $(player).onChange(() => {
-        events.onPlayerChange(snapshot(id, player));
-      });
+      events.onPlayerAdd(playerSnap(id, player));
+      $(player).onChange(() => events.onPlayerChange(playerSnap(id, player)));
     });
+    $(this.room.state).players.onRemove((_player, id) => events.onPlayerRemove(id));
 
-    // When a player is removed from the map, tell the game to delete the sprite.
-    $(this.room.state).players.onRemove((_player, id) => {
-      events.onPlayerRemove(id);
+    // ---- projectiles ----
+    $(this.room.state).projectiles.onAdd((proj, id) => {
+      events.onProjectileAdd(projSnap(id, proj));
+      $(proj).onChange(() => events.onProjectileMove(projSnap(id, proj)));
     });
+    $(this.room.state).projectiles.onRemove((_proj, id) => events.onProjectileRemove(id));
+
+    // ---- power cubes ----
+    $(this.room.state).cubes.onAdd((cube, id) => events.onCubeAdd({ id, x: cube.x, y: cube.y }));
+    $(this.room.state).cubes.onRemove((_cube, id) => events.onCubeRemove(id));
   }
 
-  /** Send our movement input to the server. The server decides what it does. */
+  // ---- intent we send to the server (it decides what actually happens) ----
+
   sendInput(x: number, y: number): void {
     this.room?.send("input", { x, y });
+  }
+  sendAim(x: number, y: number): void {
+    this.room?.send("aim", { x, y });
+  }
+  /** Fire the main attack. Pass {0,0} for a quick-fire (server auto-aims). */
+  sendFire(x: number, y: number): void {
+    this.room?.send("fire", { x, y });
+  }
+  sendSuper(x: number, y: number): void {
+    this.room?.send("super", { x, y });
+  }
+
+  /** A live snapshot of our own monster (for the HUD), or undefined if gone. */
+  get self(): PlayerSnapshot | undefined {
+    const p = this.room?.state.players.get(this.selfId);
+    return p ? playerSnap(this.selfId, p) : undefined;
+  }
+
+  /** A live snapshot of the match flow + poison zone, read each frame. */
+  get match(): MatchInfo | undefined {
+    const s = this.room?.state;
+    if (!s) return undefined;
+    return {
+      phase: s.phase,
+      phaseTimeLeft: s.phaseTimeLeft,
+      aliveCount: s.aliveCount,
+      winnerName: s.winnerName,
+      safeMinX: s.safeMinX,
+      safeMinY: s.safeMinY,
+      safeMaxX: s.safeMaxX,
+      safeMaxY: s.safeMaxY,
+    };
   }
 
   /** Leave the room and clean up (e.g. when returning to the lobby). */
@@ -102,12 +183,39 @@ export class Network {
   }
 }
 
-/** Turn a Colyseus player schema into a plain snapshot the game understands. */
-function snapshot(id: string, player: {
-  x: number;
-  y: number;
-  name: string;
-  color: string;
-}): PlayerSnapshot {
-  return { id, x: player.x, y: player.y, name: player.name, color: player.color };
+/** Colyseus player schema -> plain snapshot the game understands. */
+function playerSnap(
+  id: string,
+  p: {
+    x: number; y: number; name: string; color: string; monster: string;
+    facing: number; health: number; maxHealth: number; ammo: number;
+    ammoMax: number; super: number; cubes: number; alive: boolean;
+    rank: number; kills: number;
+  },
+): PlayerSnapshot {
+  return {
+    id,
+    x: p.x,
+    y: p.y,
+    name: p.name,
+    color: p.color,
+    monster: p.monster,
+    facing: p.facing,
+    health: p.health,
+    maxHealth: p.maxHealth,
+    ammo: p.ammo,
+    ammoMax: p.ammoMax,
+    super: p.super,
+    cubes: p.cubes,
+    alive: p.alive,
+    rank: p.rank,
+    kills: p.kills,
+  };
+}
+
+function projSnap(
+  id: string,
+  p: { x: number; y: number; radius: number; color: string; kind: string },
+): ProjectileSnapshot {
+  return { id, x: p.x, y: p.y, radius: p.radius, color: p.color, kind: p.kind };
 }

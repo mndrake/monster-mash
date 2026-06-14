@@ -1,7 +1,8 @@
 /**
  * Client-side settings. Note how little is here: the SERVER is the source of
- * truth for the arena size and player speed, so the client doesn't duplicate
- * them. We mostly just need to know where the server is and how to draw.
+ * truth for arena size, monster stats, health, and damage, so the client
+ * doesn't duplicate them. We mostly just need to know where the server is and
+ * how to draw smoothly.
  */
 
 /** The port the Colyseus server listens on (see server/src/config.ts). */
@@ -28,10 +29,16 @@ export const ROOM_NAME = "match";
 /**
  * How quickly a sprite glides toward the latest position the server sent.
  *   0 = never moves, 1 = snaps instantly (looks jittery).
- * ~0.2 gives smooth motion. This is our interpolation: instead of teleporting
- * to each new server position, sprites ease toward it a little each frame.
+ * This is our interpolation: instead of teleporting to each new server
+ * position, sprites ease toward it a little each frame.
  */
-export const INTERPOLATION_SMOOTHING = 0.2;
+export const INTERPOLATION_SMOOTHING = 0.25;
 
-/** Radius (in pixels) of a player's circle. */
-export const PLAYER_RADIUS = 18;
+/** Projectiles are fast, so they chase their target a bit harder than players. */
+export const PROJECTILE_SMOOTHING = 0.5;
+
+/** How often (ms) the client re-sends its aim direction while it's changing. */
+export const AIM_SEND_INTERVAL = 80;
+
+/** On desktop, how often (ms) a held fire button repeats. */
+export const FIRE_REPEAT_INTERVAL = 110;

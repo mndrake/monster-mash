@@ -1,18 +1,43 @@
-# Monster Mash 🟣 — Milestone 1
+# Monster Mash 🟣 — Milestone 2 (Showdown)
 
 > **Working title only.** "Monster Mash" is a placeholder (it matches the repo
 > name) — pick the real name with your son! It only appears in a couple of
 > spots: `client/index.html`, `client/vite.config.ts` (the PWA manifest), and
 > this README.
 
-A tiny, private, browser-based **2D top-down arena** you can play with friends
-on the same wifi. No app store, no accounts, no payments. It installs to your
-phone's home screen as a fullscreen PWA.
+A tiny, private, browser-based **2D top-down brawler** you can play with friends
+on the same wifi — a monster-themed take on Brawl Stars. No app store, no
+accounts, no payments. It installs to your phone's home screen as a fullscreen
+PWA.
 
-**This repo is Milestone 1 only:** several players join one shared arena with a
-room code, move with a touch joystick (or WASD/arrows on desktop), and see each
-other move in real time, smoothly. There's no shooting, health, or win
-condition yet — those are later milestones.
+**Milestone 2 adds the brawl: a SHOWDOWN free-for-all.** Pick one of three
+monsters, drop into a shared arena, shoot the others, grab power cubes to grow
+stronger, and survive the closing poison until you're the **last monster
+standing**. Rounds run back-to-back (a quick "3… 2… 1…" countdown, a winner
+banner, then again) so nobody waits long.
+
+### The three monsters
+
+| Monster | Style | Feel |
+| --- | --- | --- |
+| 👹 **Gnash** | Fast melee biter | Fragile but quick — dash in, chomp, dash out. Super lunges forward with a triple bite. |
+| 👾 **Spit** | Mid-range marksman | Balanced. Super sprays a five-glob fan. |
+| 🐲 **Brute** | Slow tank | Huge health, heavy boulders. Super hurls one giant rock. |
+
+### Core mechanics (ported from Brawl Stars)
+
+- **Twin-stick combat** — left stick moves, right stick aims & fires; release to
+  shoot, or tap for a quick auto-aimed shot. On desktop: WASD + mouse aim, click
+  to fire.
+- **Ammo bars** — a few shots that auto-reload over time (not reload-on-empty).
+- **Super** — a powerful special that charges as you land hits; fire it with the
+  glowing SUPER button (or Space / right-click on desktop).
+- **Health + regen** — take damage and you're defeated at 0; avoid damage for a
+  few seconds and health regenerates.
+- **Power cubes** — scattered pickups that raise your health and damage; defeated
+  monsters drop theirs to be looted.
+- **Closing poison** — after a grace period the safe area shrinks; standing
+  outside hurts (more and more), forcing everyone together for the finish.
 
 ---
 
@@ -48,19 +73,26 @@ draw what the server tells them.
    position a little each frame (~60×/sec). That smooth gliding is what removes
    the teleporting/jitter.
 
+**Combat is authoritative the same way.** Clients only send *intent* — "fire
+this direction", "use super". The server spawns the shots, moves them, decides
+who got hit, applies damage, collects cubes, runs the poison, and declares the
+winner. Clients just draw what the server reports, so nobody can fake a hit or
+teleport out of the poison.
+
 ### Files to read, in order
 
 If you want to understand the netcode, read these (they're short and commented):
 
 | Step | File | What it does |
 | --- | --- | --- |
-| 1. Synced state | `server/src/schema/Player.ts`, `server/src/schema/MatchState.ts` | The data that's shared with every client. |
-| 2. The match + tick | `server/src/rooms/MatchRoom.ts` | Receives input, runs the authoritative 20 Hz loop, moves players. |
-| 3. Server bootstrap | `server/src/index.ts` | Starts Colyseus; `filterBy(["roomCode"])` is how room codes work. |
-| 4. Transport boundary | `client/src/net/Network.ts` | The **only** client file that knows about Colyseus. Swap backends here. |
-| 5. Input | `client/src/input/Controls.ts` | Joystick + keyboard → one `{ x, y }` vector. |
-| 6. Smoothing | `client/src/game/PlayerView.ts` | Holds a "target" position and glides toward it (interpolation). |
-| 7. Glue | `client/src/game/GameScene.ts` | Each frame: send input → glide everyone → update the HUD. |
+| 1. Tuning | `server/src/config.ts` | All the knobs: the 3 monsters' stats, cube/poison/round settings. |
+| 2. Synced state | `server/src/schema/*.ts` | `Player`, `Projectile`, `PowerCube`, `MatchState` — the data shared with every client. |
+| 3. The match + tick | `server/src/rooms/MatchRoom.ts` | The whole authoritative 20 Hz loop: movement, shooting, damage, cubes, poison, rounds. |
+| 4. Server bootstrap | `server/src/index.ts` | Starts Colyseus; `filterBy(["roomCode"])` is how room codes work. |
+| 5. Transport boundary | `client/src/net/Network.ts` | The **only** client file that knows about Colyseus. Swap backends here. |
+| 6. Input | `client/src/input/Controls.ts` | Twin-stick joysticks + keyboard → move / aim / fire / super intent. |
+| 7. Views | `client/src/game/PlayerView.ts`, `ProjectileView.ts`, `PowerCubeView.ts` | Hold a "target" and glide toward it (interpolation). |
+| 8. Glue | `client/src/game/GameScene.ts` | Each frame: send intent → glide everything → draw the poison + HUD + banner. |
 
 ---
 
@@ -72,18 +104,18 @@ If you want to understand the netcode, read these (they're short and commented):
 │   ├── index.html        the lobby (plain HTML) + the game canvas
 │   ├── vite.config.ts    dev server + PWA manifest/service worker
 │   └── src/
-│       ├── main.ts       lobby logic → boots Phaser on "Join"
+│       ├── main.ts       lobby logic (incl. monster picker) → boots Phaser
 │       ├── config.ts     server URL + interpolation settings
-│       ├── game/         Phaser scene + player sprite
+│       ├── game/         scene, monster/projectile/cube views, monster looks
 │       ├── net/          Colyseus client wrapper (the transport boundary)
-│       ├── input/        joystick + keyboard
+│       ├── input/        twin-stick joysticks + keyboard
 │       └── util/         room-code generator
 └── server/               Colyseus authoritative server (Node)
     └── src/
         ├── index.ts      server bootstrap
-        ├── config.ts     tick rate, arena size, speed, colors
-        ├── rooms/        MatchRoom: the match + authoritative tick loop
-        └── schema/       synced state (players, positions)
+        ├── config.ts     monsters' stats, cube/poison/round tuning
+        ├── rooms/        MatchRoom: the full authoritative Showdown loop
+        └── schema/       synced state (players, projectiles, cubes, match)
 ```
 
 ---
@@ -112,12 +144,23 @@ is pre-filled so you can jump straight in.
 > `npm run typecheck` (type-check both). To regenerate the app icons, run
 > `node client/scripts/make-icons.mjs` from the `client/` folder.
 
+### Controls
+
+| | Move | Aim & fire | Super |
+| --- | --- | --- | --- |
+| **Touch** | left joystick | right joystick — *release* to fire (tap = quick auto-aim shot) | glowing **SUPER** button |
+| **Desktop** | WASD / arrows | mouse aim, **left-click** to fire | **Space** or **right-click** |
+
+Walk over **power cubes** to grow stronger, and stay inside the bright safe box —
+the **poison** outside it closes in and hurts more over time.
+
 ### Test with two browser tabs (same computer)
 
 1. Open http://localhost:5173 in **two tabs** (or two windows).
-2. Use the **same room code** in both, then Join in each.
-3. Drive one player with **WASD / arrow keys** — you'll see it move in the other
-   tab too, smoothly. The HUD (top-left) shows the room code and player count.
+2. Pick a monster, use the **same room code** in both, then Join in each.
+3. With 2+ players the round begins after a short countdown. Drive one with
+   **WASD**, aim with the **mouse**, and **click** to shoot the other tab. The
+   HUD (top-left) shows the room code, monsters left, and your health/ammo/super.
 
 ### Play on your LAN (phones & tablets on the same wifi)
 
@@ -168,12 +211,20 @@ option. It launches fullscreen like a native app. (A production build via
   keeps their network format compatible. (The newer server `0.17` line pairs
   with a `@colyseus/schema@4` client that isn't published as stable yet.)
   Per the brief, rendering uses **Phaser 3** (not the newer Phaser 4).
-- **Interpolation, not prediction:** for Milestone 1 every sprite — including
-  your own — glides toward the latest server position (`PlayerView.interpolate`).
-  It's the simplest thing that looks smooth and is easy to read. On a LAN the
-  input lag is tiny. Client-side *prediction* for the local player is a sensible
-  later upgrade; it would live in `GameScene`/`Network` and wouldn't change the
-  server.
+- **Interpolation, not prediction:** every sprite — including your own — glides
+  toward the latest server position (`PlayerView.interpolate`). It's the simplest
+  thing that looks smooth and is easy to read. On a LAN the input lag is tiny.
+  Client-side *prediction* for the local player is a sensible later upgrade; it
+  would live in `GameScene`/`Network` and wouldn't change the server.
+- **Projectiles as a fan:** every attack — single shot or multi-pellet super — is
+  the same `spawnSpread()` helper with a different pellet count and angle, so
+  adding a new monster is mostly a row of numbers in `server/src/config.ts`.
+- **Hitscan vs. travel:** shots are *travelling* projectiles (you can dodge
+  them), which is what makes a top-down brawler feel good. Collisions are simple
+  circle-overlap checks in the server tick.
+- **Continuous rounds:** instead of ending a match and dumping everyone back to
+  the lobby, a room loops countdown → play → winner → countdown. For kids on the
+  same wifi that means no waiting and no menus between fights.
 - **Room codes** use Colyseus `.filterBy(["roomCode"])`: same code → same room,
   new code → new room. Codes avoid look-alike characters (no `0`/`O`, `1`/`I`).
 - **Backend swap (future):** all Colyseus-specific client code is isolated in
@@ -183,8 +234,9 @@ option. It launches fullscreen like a native app. (A production build via
 - **Icons** are generated programmatically (`client/scripts/make-icons.mjs`)
   since this environment had no image tools — swap in real art anytime.
 
-## Out of scope for Milestone 1 (coming later)
+## Out of scope for Milestone 2 (coming later)
 
-Shooting/weapons, health/damage, the shrinking safe zone, pickups, win/lose
-conditions, accounts, persistence, sound, and art polish. See the roadmap in the
-kickoff brief (M2–M5).
+Walls/cover and bushes to hide in, team modes (Gem Grab / Brawl Ball), per-monster
+unlockable abilities (gadgets/star powers), pings/emotes, sound, accounts,
+persistence, and art polish (the monsters are emoji for now — swap in real art
+anytime). See the roadmap in the kickoff brief (M3–M5).
