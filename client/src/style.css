@@ -179,6 +179,25 @@ button.primary:active {
   line-height: 1.2;
 }
 
+/* ---- Connecting overlay (created by GameScene) ---- */
+.net-status {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: pre-line;
+  padding: 24px;
+  box-sizing: border-box;
+  color: #c7c7e0;
+  font-size: 15px;
+  line-height: 1.5;
+  background: rgba(16, 16, 26, 0.85);
+  z-index: 8;
+  pointer-events: none;
+}
+
 /* ---- In-game SUPER button (created by Controls) ---- */
 .super-btn {
   position: fixed;

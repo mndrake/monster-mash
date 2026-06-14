@@ -14,6 +14,8 @@ import {
   PROJECTILE_SMOOTHING,
   AIM_SEND_INTERVAL,
   FIRE_REPEAT_INTERVAL,
+  SERVER_URL,
+  CONNECT_TIMEOUT_MS,
 } from "../config";
 import { lookOf } from "./monsters";
 
@@ -46,6 +48,10 @@ export class GameScene extends Phaser.Scene {
   private hud!: Phaser.GameObjects.Text;
   private banner!: Phaser.GameObjects.Text;
   private poison!: Phaser.GameObjects.Graphics;
+
+  // A DOM overlay shown while connecting (robust on mobile, no canvas needed).
+  private statusEl?: HTMLElement;
+  private connectTimer?: number;
 
   // Movement: only send when it actually changes.
   private lastMoveX = 0;
@@ -107,11 +113,29 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(110);
 
+    // Show a visible "Connecting…" overlay until the first server state arrives.
+    this.showStatus(`Connecting to server…\n${SERVER_URL}`);
+
+    // A blocked port HANGS instead of erroring, so we time out ourselves and
+    // bounce back to the lobby with a clear, actionable message.
+    this.connectTimer = window.setTimeout(() => {
+      if (!this.net.connected) {
+        this.failToLobby(
+          `Couldn't reach the game server at ${SERVER_URL}. ` +
+            `The page loaded, but gameplay uses port 2567 — make sure the server is ` +
+            `running and that port 2567 is allowed through the computer's firewall.`,
+        );
+      }
+    }, CONNECT_TIMEOUT_MS);
+
     // Connect and hook the server's state up to our render callbacks.
     this.net = new Network();
     this.net
       .join(data.roomCode, data.name, data.monster, {
-        onJoin: (w, h) => this.setupArena(w, h),
+        onJoin: (w, h) => {
+          this.onConnected();
+          this.setupArena(w, h);
+        },
         onPlayerAdd: (p) => this.addPlayer(p),
         onPlayerChange: (p) => this.players.get(p.id)?.update(p),
         onPlayerRemove: (id) => this.removePlayer(id),
@@ -123,13 +147,46 @@ export class GameScene extends Phaser.Scene {
       })
       .catch((error) => {
         console.error("Failed to join:", error);
-        this.game.events.emit("join-error", "Could not reach the server. Is it running?");
+        this.failToLobby(
+          `Couldn't reach the game server at ${SERVER_URL}. ` +
+            `Is it running, and is port 2567 open on the computer's firewall?`,
+        );
       });
 
     this.events.once("shutdown", () => {
+      if (this.connectTimer) window.clearTimeout(this.connectTimer);
+      this.hideStatus();
       this.controls.destroy();
       this.net.leave();
     });
+  }
+
+  /** We're connected: drop the timeout + overlay. */
+  private onConnected() {
+    if (this.connectTimer) window.clearTimeout(this.connectTimer);
+    this.connectTimer = undefined;
+    this.hideStatus();
+  }
+
+  /** Give up: show the error back in the lobby (main.ts handles the swap). */
+  private failToLobby(message: string) {
+    if (this.connectTimer) window.clearTimeout(this.connectTimer);
+    this.connectTimer = undefined;
+    this.hideStatus();
+    this.game.events.emit("join-error", message);
+  }
+
+  private showStatus(text: string) {
+    const el = document.createElement("div");
+    el.className = "net-status";
+    el.textContent = text;
+    document.getElementById("game")!.appendChild(el);
+    this.statusEl = el;
+  }
+
+  private hideStatus() {
+    this.statusEl?.remove();
+    this.statusEl = undefined;
   }
 
   /** Draw the arena once we know its size (from the server). */

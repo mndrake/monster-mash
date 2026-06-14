@@ -42,3 +42,10 @@ export const AIM_SEND_INTERVAL = 80;
 
 /** On desktop, how often (ms) a held fire button repeats. */
 export const FIRE_REPEAT_INTERVAL = 110;
+
+/**
+ * How long to wait for the server connection before giving up. A blocked port
+ * makes the connection HANG (no error) rather than fail fast, so we surface our
+ * own timeout instead of leaving the player on a blank screen.
+ */
+export const CONNECT_TIMEOUT_MS = 9000;
