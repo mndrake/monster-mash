@@ -119,25 +119,39 @@ is pre-filled so you can jump straight in.
 3. Drive one player with **WASD / arrow keys** — you'll see it move in the other
    tab too, smoothly. The HUD (top-left) shows the room code and player count.
 
-### Test with two phones on the same wifi
+### Play on your LAN (phones & tablets on the same wifi)
 
-The dev server is exposed to your local network automatically.
+The dev server is exposed to your local network automatically — no code or
+config changes needed. Run `npm run dev` **on the computer** (a laptop/desktop),
+then connect from phones/tablets on the same wifi.
 
-1. Find your computer's **LAN IP address**:
+1. Find the computer's **LAN IP address**:
    - **macOS:** `ipconfig getifaddr en0` (or System Settings → Wi-Fi → Details)
    - **Windows:** `ipconfig` → look for "IPv4 Address"
    - **Linux:** `hostname -I`
    - It looks like `192.168.1.50`. (When you run `npm run dev`, Vite also prints
      it next to **Network:**.)
-2. Make sure the phones are on the **same wifi** as the computer.
-3. On each phone's browser, go to **`http://<that-ip>:5173`**
+2. Make sure every device is on the **same wifi** as the computer.
+3. On each device's browser, go to **`http://<that-ip>:5173`**
    (e.g. `http://192.168.1.50:5173`).
-4. Enter the **same room code** on both phones and Join. Drag the joystick in
-   the bottom-left — each phone sees the others move in real time.
+4. Enter the **same room code** on each device and Join. Drag the joystick in
+   the bottom-left — each device sees the others move in real time.
 
 The client automatically connects to the game server at `ws://<same-ip>:2567`,
-so there's nothing else to configure. (If your firewall blocks it, allow inbound
-connections on ports **5173** and **2567** on your local network.)
+so there's nothing else to configure.
+
+**Two gotchas if it doesn't connect:**
+
+- **Both ports must be reachable, not just 5173.** The page loads over **5173**,
+  but gameplay rides the WebSocket on **2567**. If the page opens but no other
+  players ever appear, port **2567** is almost always the one being blocked.
+- **Firewall** — the first run, your OS may block incoming connections. Allow
+  them on your local/private network:
+  - **macOS:** you'll usually get a popup for `node` — click **Allow**. (Or
+    System Settings → Network → Firewall → Options.)
+  - **Windows:** the Defender Firewall popup → check **Private networks** → Allow
+    access.
+  - **Linux (ufw):** `sudo ufw allow 5173 && sudo ufw allow 2567`.
 
 ### Install it to a phone's home screen (PWA)
 
