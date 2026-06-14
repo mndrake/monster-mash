@@ -198,6 +198,25 @@ button.primary:active {
   pointer-events: none;
 }
 
+/* ---- Twin-stick touch zones (created by Controls) ----
+   Two separate half-screen zones so the move + aim sticks never fight over a
+   touch, and you can move and aim at the same time with two thumbs. */
+.joy-zone {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  z-index: 4;
+  touch-action: none;
+  background: transparent;
+}
+.joy-zone.left {
+  left: 0;
+}
+.joy-zone.right {
+  right: 0;
+}
+
 /* ---- In-game SUPER button (created by Controls) ---- */
 .super-btn {
   position: fixed;

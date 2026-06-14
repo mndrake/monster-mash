@@ -21,19 +21,29 @@ export interface ControlEvents {
   onSuper: (dir: Dir) => void;
 }
 
+/** Touch device? (iPads report maxTouchPoints > 0.) */
+const IS_TOUCH =
+  typeof window !== "undefined" &&
+  ("ontouchstart" in window || (navigator.maxTouchPoints ?? 0) > 0);
+
 /**
- * Brawl-Stars-style twin-stick controls:
- *   - LEFT joystick (or WASD/arrows) = move.
- *   - RIGHT joystick = aim; releasing it FIRES in that direction. A quick tap
- *     (barely dragged) fires at the nearest enemy.
- *   - SUPER button (bottom-right) = unleash the special in your last aim.
+ * Brawl-Stars-style twin-stick controls.
  *
- * Desktop mouse/keyboard for aim, fire, and super is handled in GameScene,
- * which knows the player's on-screen position; this class owns the touch UI.
+ * ON TOUCH: the LEFT half of the screen = move, the RIGHT half = aim (release to
+ * FIRE; a quick tap fires at the nearest enemy). Each stick floats under your
+ * thumb. Crucially each stick gets its OWN half-screen zone — two sticks sharing
+ * one zone fight over touches (the right one goes dead and you can't move + aim
+ * at once), which is the bug this fixes.
+ *
+ * ON DESKTOP: we DON'T create the touch zones (they'd cover the canvas and block
+ * the mouse). GameScene handles mouse aim + click-to-fire there instead; here we
+ * just provide WASD/arrow movement. The SUPER button works on both.
  */
 export class Controls {
-  private moveStick: Joystick;
-  private aimStick: Joystick;
+  private moveStick?: Joystick;
+  private aimStick?: Joystick;
+  private leftZone?: HTMLDivElement;
+  private rightZone?: HTMLDivElement;
   private superButton: HTMLButtonElement;
 
   private joyX = 0;
@@ -46,9 +56,9 @@ export class Controls {
   private lastAimSent = 0;
 
   constructor(scene: Phaser.Scene, private events: ControlEvents) {
-    const zone = document.getElementById("game")!;
+    const gameEl = document.getElementById("game")!;
 
-    // ---- Keyboard (desktop dev) ----
+    // ---- Keyboard (desktop) ----
     const keyboard = scene.input.keyboard!;
     const Codes = Phaser.Input.Keyboard.KeyCodes;
     this.keys = {
@@ -62,13 +72,40 @@ export class Controls {
       rightArrow: keyboard.addKey(Codes.RIGHT),
     };
 
-    // ---- LEFT: movement joystick ----
+    if (IS_TOUCH) this.createTouchSticks(gameEl);
+
+    // ---- SUPER button (both platforms; on top of the right zone) ----
+    this.superButton = document.createElement("button");
+    this.superButton.id = "super-btn";
+    this.superButton.textContent = "SUPER";
+    this.superButton.className = "super-btn";
+    gameEl.appendChild(this.superButton);
+    this.superButton.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this.events.onSuper(this.lastAim);
+    });
+
+    // No right-click menu over the play area (right-click = super on desktop).
+    gameEl.addEventListener("contextmenu", this.blockContext);
+  }
+
+  /** Build the two floating joysticks, each in its own half-screen zone. */
+  private createTouchSticks(gameEl: HTMLElement) {
+    this.leftZone = document.createElement("div");
+    this.leftZone.className = "joy-zone left";
+    this.rightZone = document.createElement("div");
+    this.rightZone.className = "joy-zone right";
+    gameEl.appendChild(this.leftZone);
+    gameEl.appendChild(this.rightZone);
+
+    // LEFT: movement.
     this.moveStick = nipplejs.create({
-      zone,
-      mode: "static",
-      position: { left: "20%", bottom: "22%" },
+      zone: this.leftZone,
+      mode: "dynamic",
       color: "white",
       size: 120,
+      restJoystick: true,
     });
     this.moveStick.on("move", (event) => {
       this.joyX = event.data.vector.x;
@@ -79,13 +116,13 @@ export class Controls {
       this.joyY = 0;
     });
 
-    // ---- RIGHT: aim + fire joystick ----
+    // RIGHT: aim + fire.
     this.aimStick = nipplejs.create({
-      zone,
-      mode: "static",
-      position: { right: "20%", bottom: "22%" },
+      zone: this.rightZone,
+      mode: "dynamic",
       color: "#ff5252",
       size: 120,
+      restJoystick: true,
     });
     this.aimStick.on("move", (event) => {
       const x = event.data.vector.x;
@@ -104,20 +141,6 @@ export class Controls {
       this.events.onFire(this.aimMoved ? this.lastAim : { x: 0, y: 0 });
       this.aimMoved = false;
     });
-
-    // ---- SUPER button (created dynamically so the lobby stays clean) ----
-    this.superButton = document.createElement("button");
-    this.superButton.id = "super-btn";
-    this.superButton.textContent = "SUPER";
-    this.superButton.className = "super-btn";
-    zone.appendChild(this.superButton);
-    this.superButton.addEventListener("pointerdown", (ev) => {
-      ev.preventDefault();
-      this.events.onSuper(this.lastAim);
-    });
-
-    // No right-click menu over the play area (right-click = super on desktop).
-    zone.addEventListener("contextmenu", this.blockContext);
   }
 
   private blockContext = (e: Event) => e.preventDefault();
@@ -138,11 +161,13 @@ export class Controls {
     this.superButton.classList.toggle("ready", ready);
   }
 
-  /** Remove the joysticks + button (called when leaving the game). */
+  /** Remove the joysticks + zones + button (called when leaving the game). */
   destroy(): void {
-    this.moveStick.destroy();
-    this.aimStick.destroy();
+    this.moveStick?.destroy();
+    this.aimStick?.destroy();
     this.superButton.remove();
+    this.leftZone?.remove();
+    this.rightZone?.remove();
     document.getElementById("game")?.removeEventListener("contextmenu", this.blockContext);
   }
 }
