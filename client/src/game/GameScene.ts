@@ -116,14 +116,13 @@ export class GameScene extends Phaser.Scene {
     // Show a visible "Connecting…" overlay until the first server state arrives.
     this.showStatus(`Connecting to server…\n${SERVER_URL}`);
 
-    // A blocked port HANGS instead of erroring, so we time out ourselves and
-    // bounce back to the lobby with a clear, actionable message.
+    // A stuck connection often HANGS instead of erroring, so we time out
+    // ourselves and show what stage we got stuck at.
     this.connectTimer = window.setTimeout(() => {
       if (!this.net.connected) {
         this.failToLobby(
-          `Couldn't reach the game server at ${SERVER_URL}. ` +
-            `The page loaded, but gameplay uses port 2567 — make sure the server is ` +
-            `running and that port 2567 is allowed through the computer's firewall.`,
+          `Timed out connecting to ${SERVER_URL}. The server page loads, but the ` +
+            `realtime connection didn't complete.`,
         );
       }
     }, CONNECT_TIMEOUT_MS);
@@ -147,10 +146,8 @@ export class GameScene extends Phaser.Scene {
       })
       .catch((error) => {
         console.error("Failed to join:", error);
-        this.failToLobby(
-          `Couldn't reach the game server at ${SERVER_URL}. ` +
-            `Is it running, and is port 2567 open on the computer's firewall?`,
-        );
+        const detail = error?.message ? ` (${error.message})` : "";
+        this.failToLobby(`Couldn't join the game at ${SERVER_URL}${detail}.`);
       });
 
     this.events.once("shutdown", () => {
@@ -168,20 +165,25 @@ export class GameScene extends Phaser.Scene {
     this.hideStatus();
   }
 
-  /** Give up: show the error back in the lobby (main.ts handles the swap). */
+  /**
+   * Give up. Show the reason full-screen (easy to read / screenshot) for a
+   * couple of seconds, then return to the lobby (main.ts handles the swap).
+   */
   private failToLobby(message: string) {
     if (this.connectTimer) window.clearTimeout(this.connectTimer);
     this.connectTimer = undefined;
-    this.hideStatus();
-    this.game.events.emit("join-error", message);
+    this.showStatus(`⚠️ ${message}`);
+    window.setTimeout(() => this.game.events.emit("join-error", message), 2500);
   }
 
   private showStatus(text: string) {
-    const el = document.createElement("div");
-    el.className = "net-status";
-    el.textContent = text;
-    document.getElementById("game")!.appendChild(el);
-    this.statusEl = el;
+    // Reuse the overlay if it already exists (e.g. connecting -> error).
+    if (!this.statusEl) {
+      this.statusEl = document.createElement("div");
+      this.statusEl.className = "net-status";
+      document.getElementById("game")!.appendChild(this.statusEl);
+    }
+    this.statusEl.textContent = text;
   }
 
   private hideStatus() {
