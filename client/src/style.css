@@ -1,0 +1,129 @@
+/* Fill the whole screen, no scrolling, no accidental text selection on touch. */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #10101a;
+  color: #eaeaf2;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The game canvas container fills the viewport. touch-action:none stops the
+   browser from scrolling / zooming when you drag the joystick. */
+#game {
+  position: fixed;
+  inset: 0;
+  touch-action: none;
+}
+
+/* ---- Lobby ---- */
+#lobby {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 30%, #23234a, #10101a 70%);
+  z-index: 10;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.panel {
+  width: 100%;
+  max-width: 360px;
+  background: #1b1b2f;
+  border: 1px solid #33335a;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.panel h1 {
+  margin: 0 0 4px;
+  font-size: 28px;
+  text-align: center;
+}
+
+.tagline {
+  margin: 0 0 20px;
+  text-align: center;
+  color: #9a9ac0;
+  font-size: 14px;
+}
+
+label {
+  display: block;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #9a9ac0;
+}
+
+input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  padding: 12px;
+  font-size: 18px;
+  border-radius: 10px;
+  border: 1px solid #44446a;
+  background: #10101a;
+  color: #ffffff;
+}
+
+#code {
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  font-family: monospace;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.row input {
+  flex: 1;
+}
+
+#generate {
+  margin-top: 6px;
+  width: 52px;
+  font-size: 22px;
+  border-radius: 10px;
+  border: 1px solid #44446a;
+  background: #2a2a4a;
+  color: #fff;
+  cursor: pointer;
+}
+
+button.primary {
+  width: 100%;
+  padding: 14px;
+  font-size: 18px;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  background: #5b6cff;
+  color: white;
+  cursor: pointer;
+}
+
+button.primary:active {
+  background: #4858e0;
+}
+
+.error {
+  min-height: 1em;
+  margin: 12px 0 0;
+  text-align: center;
+  color: #ff6b6b;
+  font-size: 14px;
+}
