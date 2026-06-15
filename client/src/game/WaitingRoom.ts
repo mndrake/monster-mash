@@ -1,4 +1,4 @@
-import { lookOf } from "./monsters";
+import { lookOf, MONSTER_ORDER } from "./monsters";
 import type { PlayerSnapshot } from "../net/Network";
 
 /**
@@ -23,7 +23,7 @@ export class WaitingRoom {
   private botRow: HTMLDivElement;
   private onStartCb?: () => void;
   private onLeaveCb?: () => void;
-  private onAddBotCb?: () => void;
+  private onAddBotCb?: (monster: string, difficulty: string) => void;
   private onRemoveBotCb?: () => void;
   private shown = false;
 
@@ -38,8 +38,17 @@ export class WaitingRoom {
       `<div class="wr-label">Players (<span class="wr-count">0</span>) · Standings</div>` +
       `<ol class="wr-list"></ol>` +
       `<div class="wr-bots">` +
-      `<button type="button" class="wr-bot-remove">− Bot</button>` +
-      `<button type="button" class="wr-bot-add">+ Add bot</button>` +
+      `<select class="wr-bot-monster" title="Bot monster">` +
+      `<option value="random">🎲 Random</option>` +
+      MONSTER_ORDER.map((id) => `<option value="${id}">${lookOf(id).emoji} ${lookOf(id).name}</option>`).join("") +
+      `</select>` +
+      `<select class="wr-bot-level" title="Bot difficulty">` +
+      `<option value="easy">Easy</option>` +
+      `<option value="normal" selected>Normal</option>` +
+      `<option value="hard">Hard</option>` +
+      `</select>` +
+      `<button type="button" class="wr-bot-remove">−</button>` +
+      `<button type="button" class="wr-bot-add">+ Bot</button>` +
       `</div>` +
       `<button type="button" class="wr-start">Start game</button>` +
       `<div class="wr-hint">Waiting for the host to start…</div>` +
@@ -53,8 +62,10 @@ export class WaitingRoom {
     this.botRow = this.el.querySelector(".wr-bots") as HTMLDivElement;
     this.startBtn.addEventListener("click", () => this.onStartCb?.());
     this.leaveBtn.addEventListener("click", () => this.onLeaveCb?.());
+    const botMonster = this.el.querySelector(".wr-bot-monster") as HTMLSelectElement;
+    const botLevel = this.el.querySelector(".wr-bot-level") as HTMLSelectElement;
     (this.el.querySelector(".wr-bot-add") as HTMLButtonElement).addEventListener("click", () =>
-      this.onAddBotCb?.(),
+      this.onAddBotCb?.(botMonster.value, botLevel.value),
     );
     (this.el.querySelector(".wr-bot-remove") as HTMLButtonElement).addEventListener("click", () =>
       this.onRemoveBotCb?.(),
@@ -73,7 +84,7 @@ export class WaitingRoom {
   }
 
   /** Host-only: add / remove a bot. */
-  onAddBot(cb: () => void): void {
+  onAddBot(cb: (monster: string, difficulty: string) => void): void {
     this.onAddBotCb = cb;
   }
   onRemoveBot(cb: () => void): void {
@@ -116,7 +127,7 @@ export class WaitingRoom {
         const tags =
           (isHost ? `<span class="wr-tag wr-host">👑 host</span>` : "") +
           (isSelf ? `<span class="wr-tag wr-you">you</span>` : "") +
-          (p.isBot ? `<span class="wr-tag wr-bot">BOT</span>` : "");
+          (p.isBot ? `<span class="wr-tag wr-bot">BOT${p.botLevel ? " · " + p.botLevel : ""}</span>` : "");
         return (
           `<li class="wr-row${isSelf ? " is-self" : ""}">` +
           `<span class="wr-emoji">${look.emoji}</span>` +
@@ -201,9 +212,16 @@ function injectStyles(): void {
     #waiting-room .wr-host { background: rgba(255, 209, 102, 0.22); color: #ffd166; }
     #waiting-room .wr-you { background: rgba(91, 140, 255, 0.3); color: #cdddff; }
     #waiting-room .wr-bot { background: rgba(160, 160, 180, 0.25); color: #c7c7e0; letter-spacing: 1px; }
-    #waiting-room .wr-bots { display: flex; gap: 8px; margin-top: 8px; }
+    #waiting-room .wr-bots { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    #waiting-room .wr-bots select {
+      flex: 1 1 40%; min-width: 0; padding: 9px; border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 10px; background: rgba(255, 255, 255, 0.06); color: #eaeaf2;
+      font: 600 13px/1 inherit;
+    }
+    #waiting-room .wr-bots .wr-bot-remove { flex: 0 0 auto; }
+    #waiting-room .wr-bots .wr-bot-add { flex: 1 1 auto; }
     #waiting-room .wr-bots button {
-      flex: 1; padding: 10px; border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 10px 14px; border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 10px; background: rgba(255, 255, 255, 0.06); color: #eaeaf2;
       font: 600 14px/1 inherit; cursor: pointer;
     }

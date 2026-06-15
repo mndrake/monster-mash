@@ -25,6 +25,8 @@ export interface PlayerSnapshot {
   monster: string;
   /** True for a server-controlled bot (shown with a "BOT" tag). */
   isBot: boolean;
+  /** Bot difficulty ("easy"|"normal"|"hard"); "" for humans. */
+  botLevel: string;
   facing: number;
   health: number;
   maxHealth: number;
@@ -241,8 +243,8 @@ export class Network {
     this.room?.send("start");
   }
   /** Host-only: add / remove a bot in the waiting room. */
-  sendAddBot(): void {
-    this.room?.send("addBot");
+  sendAddBot(monster: string, difficulty: string): void {
+    this.room?.send("addBot", { monster, difficulty });
   }
   sendRemoveBot(): void {
     this.room?.send("removeBot");
@@ -301,7 +303,7 @@ function playerSnap(
   id: string,
   p: {
     x: number; y: number; name: string; color: string; monster: string;
-    isBot: boolean; facing: number; health: number; maxHealth: number; ammo: number;
+    isBot: boolean; botLevel: string; facing: number; health: number; maxHealth: number; ammo: number;
     ammoMax: number; super: number; gadgetIndex: number; gadgetCharge: number;
     statusFx: string; cubes: number; alive: boolean;
     hidden: boolean; rank: number; kills: number; wins: number; totalKills: number;
@@ -315,6 +317,7 @@ function playerSnap(
     color: p.color,
     monster: p.monster,
     isBot: p.isBot,
+    botLevel: p.botLevel,
     facing: p.facing,
     health: p.health,
     maxHealth: p.maxHealth,

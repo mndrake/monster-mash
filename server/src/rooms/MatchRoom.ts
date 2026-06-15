@@ -182,10 +182,11 @@ export class MatchRoom extends Room<MatchState> {
     });
 
     // Host-only, lobby-only: add / remove a bot (a server-controlled player).
-    this.onMessage("addBot", (client) => {
+    // Payload picks the bot's monster ("" / "random" = random) and difficulty.
+    this.onMessage("addBot", (client, msg: { monster?: string; difficulty?: string }) => {
       if (this.state.phase !== PHASE.LOBBY) return;
       if (client.sessionId !== this.state.hostId) return;
-      this.addBot();
+      this.addBot(msg?.monster, msg?.difficulty);
     });
     this.onMessage("removeBot", (client) => {
       if (this.state.phase !== PHASE.LOBBY) return;
@@ -728,6 +729,14 @@ export class MatchRoom extends Room<MatchState> {
     return { x: Math.cos(p.facing), y: Math.sin(p.facing) };
   }
 
+  /** True if no wall/box blocks the straight line from `p` to `target`. */
+  private hasLineOfSight(p: Player, target: Player, pad: number): boolean {
+    for (const w of this.obstacleRects()) {
+      if (segmentRectHit(p.x, p.y, target.x, target.y, w, pad) !== null) return false;
+    }
+    return true;
+  }
+
   private nearestEnemy(p: Player): Player | undefined {
     let best: Player | undefined;
     let bestD = Infinity;
@@ -1080,13 +1089,16 @@ export class MatchRoom extends Room<MatchState> {
   // =========================================================================
 
   /** Add one bot, if there's room. Host-only / lobby-only (checked by caller). */
-  private addBot() {
+  private addBot(monster?: string, difficulty?: string) {
     if (this.state.players.size >= MAX_PLAYERS) return;
     const key = `bot-${++this.botSeq}`;
     const p = new Player();
     (p as KeyedPlayer).__key = key;
     p.isBot = true;
-    p.monster = MONSTERS[Math.floor(Math.random() * MONSTERS.length)].id;
+    // Chosen monster, or random when unset / "random" / invalid.
+    const wanted = MONSTERS.find((m) => m.id === monster);
+    p.monster = wanted ? wanted.id : MONSTERS[Math.floor(Math.random() * MONSTERS.length)].id;
+    p.botLevel = difficulty === "easy" || difficulty === "hard" ? difficulty : "normal";
     p.gadgetIndex = Math.random() < 0.5 ? 0 : 1;
     p.name = BOT_NAMES[(this.botSeq - 1) % BOT_NAMES.length];
     p.color = PLAYER_COLORS[(this.state.players.size) % PLAYER_COLORS.length];
@@ -1148,16 +1160,26 @@ export class MatchRoom extends Room<MatchState> {
         return;
       }
 
-      // 2) Engage the nearest enemy if one is reasonably close.
+      // Difficulty tuning: how far it notices enemies, how reliably it fires,
+      // and whether it bothers with super/gadget.
+      const diff =
+        p.botLevel === "easy"
+          ? { aggro: 480, fire: 0.55, abilities: false }
+          : p.botLevel === "hard"
+            ? { aggro: 1200, fire: 1, abilities: true }
+            : { aggro: 760, fire: 0.85, abilities: true };
+
+      // 2) Engage the nearest enemy if it's within this bot's awareness range.
       const target = this.nearestEnemy(p);
-      if (target) {
+      const distToTarget = target ? Math.hypot(target.x - p.x, target.y - p.y) : Infinity;
+      if (target && distToTarget <= diff.aggro) {
         const tx = target.x - p.x;
         const ty = target.y - p.y;
-        const dist = Math.hypot(tx, ty) || 1;
+        const dist = distToTarget || 1;
         const ux = tx / dist;
         const uy = ty / dist;
 
-        // Aim/face the target (auto-aim does the actual shot direction).
+        // Aim/face the target.
         p.aimX = ux;
         p.aimY = uy;
         p.facing = Math.atan2(uy, ux);
@@ -1177,14 +1199,25 @@ export class MatchRoom extends Room<MatchState> {
           p.inputY = ux * sign;
         }
 
-        // Fire when in range and loaded; unleash the super a bit closer in.
-        if (dist <= type.projectileRange && p.ammo >= 1) p.wantFire = true;
-        // A self-speed super (Asher) is best off cooldown; others want a target close.
-        if (p.super >= 1 && (type.superSelfSpeed || dist <= type.superRange * 0.9))
-          p.wantSuper = true;
-        // Fire the gadget when it's ready and an enemy is within reach.
-        if (this.now >= p.gadgetReadyAt && dist <= type.projectileRange * 1.2)
-          p.wantGadget = true;
+        // Fire only with a clear shot (no firing into walls) + a difficulty
+        // "reliability" roll. Easy bots aim sloppily (jittered dir, can miss);
+        // others auto-aim (0 vector) for an accurate shot.
+        const clearShot = this.hasLineOfSight(p, target, type.projectileRadius);
+        if (dist <= type.projectileRange && p.ammo >= 1 && clearShot && Math.random() < diff.fire) {
+          if (p.botLevel === "easy") {
+            const a = Math.atan2(uy, ux) + (Math.random() - 0.5) * 0.5;
+            p.fireDirX = Math.cos(a);
+            p.fireDirY = Math.sin(a);
+          }
+          p.wantFire = true;
+        }
+        if (diff.abilities) {
+          // A self-speed super (Asher) is best off cooldown; others want a target close.
+          if (p.super >= 1 && (type.superSelfSpeed || dist <= type.superRange * 0.9))
+            p.wantSuper = true;
+          if (this.now >= p.gadgetReadyAt && dist <= type.projectileRange * 1.2)
+            p.wantGadget = true;
+        }
       } else {
         // 3) Nobody around: drift toward the center to find the action.
         const dx = cx - p.x;

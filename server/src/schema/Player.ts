@@ -16,6 +16,8 @@ export class Player extends Schema {
   @type("string") monster = "gnash";
   /** True for a server-controlled bot (no client). The client tags it "BOT". */
   @type("boolean") isBot = false;
+  /** Bot difficulty: "easy" | "normal" | "hard" (empty for humans). */
+  @type("string") botLevel = "";
 
   // ---- body (synced) ----
   @type("number") x = 0;

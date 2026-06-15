@@ -172,7 +172,7 @@ export class GameScene extends Phaser.Scene {
       this.net.leave();
       this.game.events.emit("join-error", "");
     });
-    this.waiting.onAddBot(() => this.net.sendAddBot());
+    this.waiting.onAddBot((monster, difficulty) => this.net.sendAddBot(monster, difficulty));
     this.waiting.onRemoveBot(() => this.net.sendRemoveBot());
     // Out-of-bounds is a dark grassy void; the playfield is painted in setupArena.
     this.cameras.main.setBackgroundColor("#1d3318");
