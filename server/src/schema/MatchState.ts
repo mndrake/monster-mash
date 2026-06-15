@@ -27,8 +27,14 @@ export class MatchState extends Schema {
   @type("string") mapId = "";
 
   // ---- match flow ----
-  /** "countdown" | "playing" | "roundover" (see PHASE in config). */
-  @type("string") phase = "countdown";
+  /** "lobby" | "countdown" | "playing" | "roundover" (see PHASE in config). */
+  @type("string") phase = "lobby";
+  /**
+   * sessionId of the host — the player who may start the round from the waiting
+   * room. Set to the first player to join; reassigned to the oldest remaining
+   * player if the host leaves; "" when the room is empty.
+   */
+  @type("string") hostId = "";
   /** Milliseconds left in the current phase (countdown / round-over banner). */
   @type("number") phaseTimeLeft = 0;
   /** How many monsters are still alive (drives the "X left" HUD). */

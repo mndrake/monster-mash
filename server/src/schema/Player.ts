@@ -47,6 +47,14 @@ export class Player extends Schema {
   /** How many other monsters this player defeated this round. */
   @type("number") kills = 0;
 
+  // ---- session totals (synced, for the waiting-room leaderboard) ----
+  // These persist across rounds for the whole session — respawn() must NOT
+  // reset them (unlike the per-round `kills`/`rank` above).
+  /** Rounds won this session (placed 1st). */
+  @type("number") wins = 0;
+  /** Total monsters defeated across all rounds this session. */
+  @type("number") totalKills = 0;
+
   // ---- server-only (NOT synced) ----
   /** Latest movement input vector, each component in [-1, 1]. */
   inputX = 0;

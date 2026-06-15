@@ -35,6 +35,9 @@ export interface PlayerSnapshot {
   hidden: boolean;
   rank: number;
   kills: number;
+  /** Session totals for the waiting-room leaderboard (persist across rounds). */
+  wins: number;
+  totalKills: number;
 }
 
 /** A shot in flight. */
@@ -71,6 +74,8 @@ export interface MatchInfo {
   phaseTimeLeft: number;
   aliveCount: number;
   winnerName: string;
+  /** sessionId of the host (the player who can start the round). */
+  hostId: string;
   safeMinX: number;
   safeMinY: number;
   safeMaxX: number;
@@ -211,6 +216,26 @@ export class Network {
   sendSuper(x: number, y: number): void {
     this.room?.send("super", { x, y });
   }
+  /** Host-only on the server: start the round from the waiting room. */
+  sendStart(): void {
+    this.room?.send("start");
+  }
+
+  /** Are we the host (the player who can start rounds)? */
+  get isHost(): boolean {
+    return this.selfId !== "" && this.selfId === this.room?.state?.hostId;
+  }
+
+  /** Every player in the room, as plain snapshots (for the waiting room). */
+  get roster(): PlayerSnapshot[] {
+    const players = this.room?.state?.players;
+    if (!players) return [];
+    const out: PlayerSnapshot[] = [];
+    players.forEach((p: Parameters<typeof playerSnap>[1], id: string) =>
+      out.push(playerSnap(id, p)),
+    );
+    return out;
+  }
 
   /** A live snapshot of our own monster (for the HUD), or undefined if gone. */
   get self(): PlayerSnapshot | undefined {
@@ -229,6 +254,7 @@ export class Network {
       phaseTimeLeft: s.phaseTimeLeft,
       aliveCount: s.aliveCount,
       winnerName: s.winnerName,
+      hostId: s.hostId,
       safeMinX: s.safeMinX,
       safeMinY: s.safeMinY,
       safeMaxX: s.safeMaxX,
@@ -250,7 +276,7 @@ function playerSnap(
     x: number; y: number; name: string; color: string; monster: string;
     facing: number; health: number; maxHealth: number; ammo: number;
     ammoMax: number; super: number; cubes: number; alive: boolean;
-    hidden: boolean; rank: number; kills: number;
+    hidden: boolean; rank: number; kills: number; wins: number; totalKills: number;
   },
 ): PlayerSnapshot {
   return {
@@ -271,6 +297,8 @@ function playerSnap(
     hidden: p.hidden,
     rank: p.rank,
     kills: p.kills,
+    wins: p.wins,
+    totalKills: p.totalKills,
   };
 }
 

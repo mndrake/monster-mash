@@ -12,6 +12,7 @@ import { PlayerView } from "./PlayerView";
 import { ProjectileView } from "./ProjectileView";
 import { PowerCubeView } from "./PowerCubeView";
 import { BoxView } from "./BoxView";
+import { WaitingRoom } from "./WaitingRoom";
 import { Controls, type Dir } from "../input/Controls";
 import {
   PROJECTILE_LERP_RATE,
@@ -80,6 +81,10 @@ const AUDIO_UNLOCK_EVENTS = ["pointerdown", "touchstart", "touchend", "mousedown
 export class GameScene extends Phaser.Scene {
   private net!: Network;
   private controls!: Controls;
+  /** The "lobby" phase waiting-room overlay (player list + leaderboard + start). */
+  private waiting!: WaitingRoom;
+  /** Last phase we reacted to, so we only show/hide the waiting room on change. */
+  private lastPhase = "";
 
   private players = new Map<string, PlayerView>();
   private projectiles = new Map<string, ProjectileView>();
@@ -142,6 +147,11 @@ export class GameScene extends Phaser.Scene {
   create(data: SceneData) {
     this.roomCode = data.roomCode;
     this.monster = data.monster;
+
+    // Waiting room overlay (shown while phase === "lobby"). The host's Start
+    // button asks the server to begin the round.
+    this.waiting = new WaitingRoom(this.roomCode);
+    this.waiting.onStart(() => this.net.sendStart());
     // Out-of-bounds is a dark grassy void; the playfield is painted in setupArena.
     this.cameras.main.setBackgroundColor("#1d3318");
     this.makeGrassTexture();
@@ -225,9 +235,20 @@ export class GameScene extends Phaser.Scene {
           this.onConnected();
           this.setupArena(w, h, mapId);
         },
-        onPlayerAdd: (p) => this.addPlayer(p),
-        onPlayerChange: (p) => this.players.get(p.id)?.update(p),
-        onPlayerRemove: (id) => this.removePlayer(id),
+        onPlayerAdd: (p) => {
+          this.addPlayer(p);
+          this.refreshWaitingRoom();
+        },
+        onPlayerChange: (p) => {
+          this.players.get(p.id)?.update(p);
+          // Keeps the leaderboard live (wins/kills + host handoff) without
+          // rebuilding it every frame.
+          if (this.waiting.visible) this.refreshWaitingRoom();
+        },
+        onPlayerRemove: (id) => {
+          this.removePlayer(id);
+          this.refreshWaitingRoom();
+        },
         onProjectileAdd: (p) => this.addProjectile(p),
         onProjectileMove: (p) => this.projectiles.get(p.id)?.setTarget(p),
         onProjectileRemove: (id) => this.removeProjectile(id),
@@ -249,6 +270,7 @@ export class GameScene extends Phaser.Scene {
       if (this.connectTimer) window.clearTimeout(this.connectTimer);
       this.hideStatus();
       this.controls.destroy();
+      this.waiting.destroy();
       this.net.leave();
       this.sfx.close();
       this.muteBtn?.remove();
@@ -638,6 +660,12 @@ export class GameScene extends Phaser.Scene {
     this.boxRects.delete(id);
   }
 
+  /** Repopulate the waiting room's roster + leaderboard from current state. */
+  private refreshWaitingRoom() {
+    if (!this.net.connected) return;
+    this.waiting.render(this.net.roster, this.net.match?.hostId ?? "", this.net.selfId);
+  }
+
   /** Is our own monster currently alive? (Gate sending attack intent.) */
   private aliveSelf(): boolean {
     return this.net.connected && (this.net.self?.alive ?? false);
@@ -900,6 +928,18 @@ export class GameScene extends Phaser.Scene {
     const m = this.net.match;
     const me = this.net.self;
 
+    // Show/hide the waiting room as we enter/leave the lobby phase (only acts on
+    // a phase change, so it's cheap to call every frame).
+    if (m && m.phase !== this.lastPhase) {
+      this.lastPhase = m.phase;
+      if (m.phase === "lobby") {
+        this.refreshWaitingRoom();
+        this.waiting.show();
+      } else {
+        this.waiting.hide();
+      }
+    }
+
     this.updateSoundTriggers();
     this.updateKillFeed();
 
@@ -924,7 +964,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (m.phase === "countdown") {
+    if (m.phase === "lobby") {
+      // The waiting-room overlay covers the canvas; keep the in-world banner clear.
+      this.banner.setText("");
+    } else if (m.phase === "countdown") {
       const n = Math.ceil(m.phaseTimeLeft / 1000);
       this.banner.setFontSize(80).setText(n > 0 ? String(n) : "BRAWL!");
     } else if (m.phase === "roundover") {

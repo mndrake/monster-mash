@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A private, browser-based 2D top-down brawler (monster-themed Brawl Stars clone) intended for LAN play with friends. PWA installable to a phone home screen.
 
-It's a continuous **Showdown** free-for-all: pick one of **six** monsters, drop into a shared arena, and survive the closing **poison** until you're the last standing. Power cubes (which raise your health + damage) come from **breakable boxes** and from kills. Static **terrain** matters — **walls** block movement *and* projectiles; **bushes** you walk through to hide. Rounds loop back-to-back.
+It's a continuous **Showdown** free-for-all: pick one of **six** monsters, drop into a shared arena, and survive the closing **poison** until you're the last standing. Power cubes (which raise your health + damage) come from **breakable boxes** and from kills. Static **terrain** matters — **walls** block movement *and* projectiles; **bushes** you walk through to hide. Players gather in a **waiting room** where the host starts each round; between rounds it returns there with a running session leaderboard.
 
 On top of the authoritative simulation there's a presentation/feel layer: bright procedural Brawl-Stars-style visuals (grassy field, 3D crate walls, gas-cloud poison), an on-character ammo/super HUD, an aim indicator, damage numbers, a kill feed, defeat/spawn FX, and synthesized sound effects + music (with a mute toggle). Your own monster is **client-side predicted** so it responds instantly. (Built up across milestones M1→M5; the per-milestone design notes live in `docs/`.)
 
@@ -59,6 +59,7 @@ The tick loop runs at `TICK_RATE = 30` Hz on the server, which also patches stat
 | Sound effects + background music + mute | `client/src/audio/Sfx.ts` (all synthesized, no asset files; mute button / `M` key) |
 | Arena look (grass, 3D crate walls, bushes, gas poison, camera zoom) | `client/src/game/GameScene.ts` (`PALETTE`, `WALL_EXTRUDE`, `CAMERA_ZOOM`, `makeGrassTexture`/`drawWall`/`drawBush`/`drawPoison`) — all procedural; the old `client/public/tiles/*.jpg` masters in `art-generated/` are no longer loaded |
 | Lobby HTML / monster picker (portraits + stat bars) | `client/index.html` + `client/src/main.ts` + `client/src/style.css` |
+| Waiting room overlay (roster, session leaderboard, host Start button) | `client/src/game/WaitingRoom.ts` (DOM overlay, driven by `GameScene`); the `LOBBY` phase + `hostId` + `wins`/`totalKills` live server-side in `MatchRoom.ts` / `schema/` |
 | Monster looks (emoji, accent, blurb) + display stats | `client/src/game/monsters.ts` |
 
 Adding a new monster is mostly a row of numbers in `server/src/config.ts` (`MONSTERS` array) plus a look entry (with the display stats) in `client/src/game/monsters.ts` and its id in `MONSTER_ORDER`.
@@ -83,7 +84,9 @@ There is one Colyseus room type, `"match"`, registered with `.filterBy(["roomCod
 
 ### Match flow
 
-A room loops `COUNTDOWN → PLAYING → ROUNDOVER → COUNTDOWN …` continuously so there is never a lobby wait between rounds. Phase, time-left, alive count, winner name, and the safe-zone rectangle are all on `MatchState` and broadcast every tick.
+A room cycles `LOBBY → COUNTDOWN → PLAYING → ROUNDOVER → LOBBY …`. It opens in the **waiting room** (`LOBBY`): the **host** (first player to join; reassigned to the oldest remaining player if they leave — tracked by `hostId` on `MatchState`) starts the round with a `"start"` message; the server freezes the sim until then. After the winner banner (`ROUNDOVER`) it returns to `LOBBY` for the host to start the next round. Phase, time-left, alive count, winner name, `hostId`, and the safe-zone rectangle are all on `MatchState` and broadcast every tick.
+
+The client shows the waiting room as a DOM overlay (`client/src/game/WaitingRoom.ts`, driven by `GameScene` — shown while `phase === "lobby"`): a live roster (players appear as they join), a **session leaderboard** (cumulative `wins` + `totalKills` on `Player`, which persist across rounds — `respawn()` must not reset them), and a host-only Start button. To let *anyone* start instead of host-only, drop the `hostId` check in `MatchRoom`'s `"start"` handler.
 
 ## Constraints to preserve
 

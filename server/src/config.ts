@@ -33,6 +33,8 @@ export const PORT = Number(process.env.PORT) || 2567;
 
 /** Phases a match cycles through. Kept as plain strings for the synced state. */
 export const PHASE = {
+  /** Waiting room: players gather and the host starts the round (see MatchRoom). */
+  LOBBY: "lobby",
   COUNTDOWN: "countdown",
   PLAYING: "playing",
   ROUNDOVER: "roundover",

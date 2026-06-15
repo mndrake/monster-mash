@@ -148,6 +148,15 @@ export class MatchRoom extends Room<MatchState> {
       p.superDirY = msg?.y ?? 0;
     });
 
+    // Start the round from the waiting room. Host-only: only the player holding
+    // hostId may start, and only from the LOBBY phase. (To let ANYONE start,
+    // drop the `client.sessionId === this.state.hostId` check.)
+    this.onMessage("start", (client) => {
+      if (this.state.phase !== PHASE.LOBBY) return;
+      if (client.sessionId !== this.state.hostId) return;
+      this.beginCountdown();
+    });
+
     this.setSimulationInterval(
       (deltaMs) => this.update(deltaMs),
       1000 / TICK_RATE,
@@ -158,8 +167,9 @@ export class MatchRoom extends Room<MatchState> {
     // only receive updates 20× a second — more to interpolate across, choppier.
     this.setPatchRate(1000 / TICK_RATE);
 
-    // Kick off the first round.
-    this.beginCountdown();
+    // Open the waiting room. The round only starts when the host hits "start"
+    // (see the "start" message handler); rounds return here when they end.
+    this.enterLobby();
 
     console.log(`Room created with code "${this.state.roomCode}".`);
   }
@@ -167,6 +177,21 @@ export class MatchRoom extends Room<MatchState> {
   // =========================================================================
   //  Round lifecycle
   // =========================================================================
+
+  /**
+   * Open (or return to) the waiting room. Players gather here and the host
+   * starts the round. We clear the arena so nothing lingers behind the client's
+   * waiting-room overlay; players are respawned for real in beginCountdown().
+   */
+  private enterLobby() {
+    this.state.phase = PHASE.LOBBY;
+    this.state.phaseTimeLeft = 0;
+    this.state.winnerName = "";
+    this.state.projectiles.clear();
+    this.state.cubes.clear();
+    this.state.boxes.clear();
+    this.state.aliveCount = this.state.players.size;
+  }
 
   /** Reset the arena and start the "3… 2… 1…" countdown to a new round. */
   private beginCountdown() {
@@ -238,6 +263,9 @@ export class MatchRoom extends Room<MatchState> {
         winner = p;
       }
     });
+    // Credit the session leaderboard. Guarded: a mutual poison death can leave
+    // nobody alive, in which case there's no winner to credit.
+    if (winner) winner.wins += 1;
     this.state.winnerName = winner ? winner.name : "";
     this.state.phase = PHASE.ROUNDOVER;
     this.state.phaseTimeLeft = ROUNDOVER_MS;
@@ -253,6 +281,9 @@ export class MatchRoom extends Room<MatchState> {
 
     this.state.phaseTimeLeft = Math.max(0, this.state.phaseTimeLeft - deltaMs);
 
+    // Waiting room: nothing simulates until the host starts the round.
+    if (this.state.phase === PHASE.LOBBY) return;
+
     if (this.state.phase === PHASE.COUNTDOWN) {
       if (this.state.phaseTimeLeft <= 0) {
         this.state.phase = PHASE.PLAYING;
@@ -262,7 +293,9 @@ export class MatchRoom extends Room<MatchState> {
     }
 
     if (this.state.phase === PHASE.ROUNDOVER) {
-      if (this.state.phaseTimeLeft <= 0) this.beginCountdown();
+      // Back to the waiting room after the winner banner — the host starts the
+      // next round (and the session leaderboard is up to date by now).
+      if (this.state.phaseTimeLeft <= 0) this.enterLobby();
       return;
     }
 
@@ -620,9 +653,13 @@ export class MatchRoom extends Room<MatchState> {
       this.spawnCube(x, y);
     }
 
-    // Credit the attacker (poison has an empty attackerId).
+    // Credit the attacker (poison has an empty attackerId): this round's kills
+    // and the cumulative session total for the leaderboard.
     const attacker = this.state.players.get(attackerId);
-    if (attacker && attacker !== target) attacker.kills += 1;
+    if (attacker && attacker !== target) {
+      attacker.kills += 1;
+      attacker.totalKills += 1;
+    }
 
     // Juice: a KO event for the kill feed + a defeat explosion at the body.
     this.fx.push({
@@ -827,12 +864,21 @@ export class MatchRoom extends Room<MatchState> {
     }
 
     this.state.players.set(client.sessionId, p);
+    // First player in becomes the host (the one who can start rounds).
+    if (!this.state.hostId) this.state.hostId = client.sessionId;
     this.state.aliveCount = this.countAlive();
     console.log(`${p.name} joined as ${p.monster}. Players: ${this.state.players.size}`);
   }
 
   onLeave(client: Client) {
+    const wasHost = client.sessionId === this.state.hostId;
     this.state.players.delete(client.sessionId);
+    // If the host left, hand off to the oldest remaining player (MapSchema
+    // iterates in insertion order). Empty room → no host.
+    if (wasHost) {
+      const next = this.state.players.keys().next();
+      this.state.hostId = next.done ? "" : next.value;
+    }
     this.state.aliveCount = this.countAlive();
     console.log(`${client.sessionId} left. Players: ${this.state.players.size}`);
   }
