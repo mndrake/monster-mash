@@ -1,0 +1,85 @@
+# CI gate + deploy trigger for Monster Mash.
+#
+# WHY THIS EXISTS (the user asked "if needed"):
+# Render already auto-deploys on git push natively. A workflow that *only*
+# triggered a deploy would just duplicate that. This workflow earns its keep by
+# being a GATE: it typechecks, builds, and runs the geom test FIRST, and only on
+# green does it trigger the Render deploys. render.yaml sets autoDeploy: false so
+# this is the single deploy path — no double deploys, nothing ships unless it
+# passes the gate.
+#
+# The deploy step uses Render DEPLOY HOOKS (a per-service secret URL you curl).
+# No Render API key or service IDs needed. Add these GitHub repo secrets:
+#   RENDER_DEPLOY_HOOK_SERVER  — server service → Settings → Deploy Hook
+#   RENDER_DEPLOY_HOOK_CLIENT  — client service → Settings → Deploy Hook
+#
+# NOTE: the client artifact that actually ships is built by RENDER's static-site
+# builder (where VITE_SERVER_URL lives), not by the `build` job below. The build
+# here is only a compile gate — its VITE_SERVER_URL is absent/wrong and that's
+# fine, because this artifact is never deployed.
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  # Allow manual re-deploys from the Actions tab without a new commit.
+  workflow_dispatch:
+
+# If you push twice quickly, cancel the older run so we don't deploy a stale SHA.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Typecheck, build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install (both workspaces)
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Geom collision test
+        # The repo's only test — a standalone tsx script, no test runner.
+        run: npm --workspace server exec tsx src/geom.test.ts
+
+  deploy:
+    name: Trigger Render deploys
+    needs: gate
+    runs-on: ubuntu-latest
+    # Only deploy real pushes/manual runs to main — never from forks/PRs.
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy server
+        run: |
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK_SERVER }}" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK_SERVER secret is not set"; exit 1
+          fi
+          curl -fsSL -X POST "${{ secrets.RENDER_DEPLOY_HOOK_SERVER }}"
+
+      - name: Deploy client
+        run: |
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK_CLIENT }}" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK_CLIENT secret is not set"; exit 1
+          fi
+          curl -fsSL -X POST "${{ secrets.RENDER_DEPLOY_HOOK_CLIENT }}"
+
+      # Deploy hooks return immediately (fire-and-forget) — they don't wait for
+      # the build to finish or report success/failure. If you want the workflow
+      # to BLOCK until Render reports "live" (and fail the run on a bad deploy),
+      # switch to the Render API instead: add a RENDER_API_KEY secret + each
+      # service's srv-... id, and use johnbeynon/render-deploy-action (it polls).
+      # Deploy hooks are kept here for zero-config simplicity.

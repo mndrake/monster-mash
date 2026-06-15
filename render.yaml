@@ -1,0 +1,61 @@
+# Render Blueprint — provisions both Monster Mash services in one go.
+#
+# Apply this from the Render dashboard: New → Blueprint → pick this repo. Render
+# reads this file and creates the two services below. Infra-as-code so the setup
+# is reproducible and reviewable instead of click-ops.
+#
+# Why two services (and not one):
+#   - The CLIENT is a static PWA (Vite build → plain files). Render serves it
+#     from its global CDN for free, with HTTPS — which is what makes the PWA
+#     actually installable (a real service worker needs https; LAN http never
+#     gave us that).
+#   - The SERVER is a long-lived Colyseus WebSocket process. That has to be a
+#     web service, not a static site.
+#
+# autoDeploy is FALSE on purpose: deploys are triggered by the gated GitHub
+# Actions workflow (.github/workflows/deploy.yml) AFTER typecheck/build/tests
+# pass — not on every raw push. One deploy path, no double deploys.
+
+services:
+  # ── Authoritative game server (Colyseus + WebSocket) ────────────────────
+  - type: web
+    name: monster-mash-server
+    runtime: node
+    plan: free # ⚠ free spins down after ~15 min idle → ~50s cold start (see m6 doc, "Cold start")
+    autoDeploy: false
+    region: oregon # pick the region closest to where you & friends play
+    healthCheckPath: /health # server answers GET /health with plain text (server/src/index.ts)
+    # Monorepo: build only the server workspace. Do NOT run the root `build`
+    # here — that also builds the client, which needs VITE_SERVER_URL and is
+    # deployed by the static site below, not from this service.
+    buildCommand: npm install && npm --workspace server run build
+    startCommand: npm --workspace server run start
+    # Render injects PORT; the server already reads process.env.PORT and binds
+    # 0.0.0.0 (server/src/config.ts + index.ts). No PORT env var needed here.
+
+  # ── Static PWA client (Phaser + Vite) ───────────────────────────────────
+  - type: web
+    name: monster-mash-client
+    runtime: static
+    autoDeploy: false
+    # VITE_SERVER_URL is baked in at BUILD time by THIS static-site build (where
+    # the env var lives) — not by the CI workflow. It MUST be the full wss URL
+    # with NO port (the server is on 443 behind Render's TLS edge). This
+    # overrides the client's default `:2567` derivation (client/src/config.ts).
+    #
+    # ⚠ Confirm the real hostname after the FIRST server deploy — it's usually
+    # `<name>.onrender.com` but can gain a suffix on a name collision. Then set
+    # this to match. (We set the literal rather than render.yaml's `fromService`
+    # host property, because a Blueprint can't cleanly prepend the wss:// scheme.)
+    buildCommand: npm install && npm --workspace client run build
+    staticPublishPath: client/dist
+    envVars:
+      - key: VITE_SERVER_URL
+        value: wss://monster-mash-server.onrender.com
+    # Optional cheap insurance — the app is a single page and room codes live in
+    # in-app state (never the URL), so a deep-link rewrite isn't strictly needed.
+    # Harmless to keep if you ever add client-side routes:
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
