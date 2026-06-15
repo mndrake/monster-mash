@@ -153,6 +153,11 @@ export class MatchRoom extends Room<MatchState> {
       1000 / TICK_RATE,
     );
 
+    // Send state patches at the tick rate too. Colyseus defaults to 20Hz (50ms)
+    // regardless of the simulation rate, so without this the client would still
+    // only receive updates 20× a second — more to interpolate across, choppier.
+    this.setPatchRate(1000 / TICK_RATE);
+
     // Kick off the first round.
     this.beginCountdown();
 

@@ -14,16 +14,19 @@ import { PowerCubeView } from "./PowerCubeView";
 import { BoxView } from "./BoxView";
 import { Controls, type Dir } from "../input/Controls";
 import {
-  INTERPOLATION_SMOOTHING,
-  PROJECTILE_SMOOTHING,
+  PROJECTILE_LERP_RATE,
+  CAMERA_FOLLOW_LERP,
+  PRED_CORRECTION_RATE,
+  PRED_SNAP_DIST,
   AIM_SEND_INTERVAL,
   FIRE_REPEAT_INTERVAL,
   SERVER_URL,
   CONNECT_TIMEOUT_MS,
 } from "../config";
-import { mapById } from "./maps";
+import { mapById, type Rect } from "./maps";
 import { lookOf } from "./monsters";
 import { Sfx } from "../audio/Sfx";
+import { resolveMove, clamp } from "./collision";
 
 /** Data passed in when we start this scene from the lobby. */
 interface SceneData {
@@ -82,6 +85,16 @@ export class GameScene extends Phaser.Scene {
   private projectiles = new Map<string, ProjectileView>();
   private cubes = new Map<string, PowerCubeView>();
   private boxes = new Map<string, BoxView>();
+
+  // Local-player movement prediction.
+  private arenaW = 0;
+  private arenaH = 0;
+  private walls: Rect[] = [];
+  /** Live box footprints (boxes block movement; they're dynamic, so kept here). */
+  private boxRects = new Map<string, Rect>();
+  private predX = 0;
+  private predY = 0;
+  private predReady = false;
 
   private roomCode = "";
   private monster = "gnash";
@@ -357,6 +370,11 @@ export class GameScene extends Phaser.Scene {
 
     const map = mapById(mapId);
 
+    // Remember the arena bounds + walls for local-player movement prediction.
+    this.arenaW = width;
+    this.arenaH = height;
+    this.walls = map.walls;
+
     // Bushes (walk-through cover). Drawn below the monsters; hidden remote
     // players are dimmed by PlayerView, so z-order doesn't need to occlude.
     const bushG = this.add.graphics().setDepth(-10);
@@ -371,7 +389,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, width, height);
     this.cameras.main.setZoom(CAMERA_ZOOM);
     const me = this.players.get(this.net.selfId);
-    if (me) this.cameras.main.startFollow(me.body, true, 0.15, 0.15);
+    if (me) this.cameras.main.startFollow(me.body, true, CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_LERP);
   }
 
   /** Paint one wall AABB as a raised wooden crate (shadow + side + top). */
@@ -446,7 +464,7 @@ export class GameScene extends Phaser.Scene {
     const isLocal = p.id === this.net.selfId;
     const view = new PlayerView(this, p, isLocal);
     this.players.set(p.id, view);
-    if (isLocal) this.cameras.main.startFollow(view.body, true, 0.15, 0.15);
+    if (isLocal) this.cameras.main.startFollow(view.body, true, CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_LERP);
   }
 
   private removePlayer(id: string) {
@@ -584,6 +602,7 @@ export class GameScene extends Phaser.Scene {
 
   private addBox(b: BoxSnapshot) {
     this.boxes.set(b.id, new BoxView(this, b));
+    this.boxRects.set(b.id, { x: b.x, y: b.y, w: b.w, h: b.h });
   }
   /** A box was destroyed: pop a woody break burst where it stood. */
   private removeBox(id: string) {
@@ -616,6 +635,7 @@ export class GameScene extends Phaser.Scene {
     }
     view.destroy();
     this.boxes.delete(id);
+    this.boxRects.delete(id);
   }
 
   /** Is our own monster currently alive? (Gate sending attack intent.) */
@@ -630,14 +650,86 @@ export class GameScene extends Phaser.Scene {
     this.sendMovement();
     this.handleDesktopAim();
 
-    const dt = delta / 1000;
-    this.players.forEach((v) => v.interpolate(INTERPOLATION_SMOOTHING));
-    this.projectiles.forEach((v) => v.interpolate(PROJECTILE_SMOOTHING));
+    // Clamp dt so a frame hitch (e.g. tab refocus) doesn't snap everything.
+    const dt = Math.min(delta / 1000, 0.1);
+    const projT = 1 - Math.exp(-PROJECTILE_LERP_RATE * dt);
+    // Other players glide toward their latest server position; OUR monster is
+    // predicted locally for instant response (predictLocal handles it).
+    const selfId = this.net.selfId;
+    this.players.forEach((v, id) => {
+      if (id !== selfId) v.interpolate(dt);
+    });
+    this.predictLocal(dt);
+    this.projectiles.forEach((v) => v.interpolate(projT));
     this.cubes.forEach((v) => v.bob(dt));
 
     this.drawAim();
     this.drawPoison();
     this.updateHud();
+  }
+
+  /**
+   * Move OUR monster from local input the instant a key/stick moves, using the
+   * same collision the server runs, then reconcile to the authoritative server
+   * position underneath. This hides the network round-trip so your own movement
+   * feels immediate. Active only while playing + alive; otherwise we just glide
+   * toward the server (spawn-in, countdown freeze, dead/spectating).
+   */
+  private predictLocal(dt: number) {
+    const view = this.players.get(this.net.selfId);
+    const me = this.net.self;
+    if (!view || !me) return;
+
+    const playing = this.net.match?.phase === "playing";
+    if (!playing || !me.alive) {
+      this.predReady = false;
+      view.interpolate(dt); // fall back to gliding toward the server position
+      return;
+    }
+
+    // Seed the prediction from the server on the first predicted frame.
+    if (!this.predReady) {
+      this.predX = me.x;
+      this.predY = me.y;
+      this.predReady = true;
+    }
+
+    // Reconcile: snap on a big jump (super dash / respawn / desync), else ease.
+    const ex = me.x - this.predX;
+    const ey = me.y - this.predY;
+    if (Math.hypot(ex, ey) > PRED_SNAP_DIST) {
+      this.predX = me.x;
+      this.predY = me.y;
+    } else {
+      const c = 1 - Math.exp(-PRED_CORRECTION_RATE * dt);
+      this.predX += ex * c;
+      this.predY += ey * c;
+    }
+
+    // Apply this frame's input the way the server does (clamp, then normalize).
+    const look = lookOf(me.monster);
+    const v = this.controls.getMove();
+    let vx = clamp(v.x, -1, 1);
+    let vy = clamp(v.y, -1, 1);
+    const len = Math.hypot(vx, vy);
+    if (len > 1) {
+      vx /= len;
+      vy /= len;
+    }
+    const obstacles = [...this.walls, ...this.boxRects.values()];
+    const next = resolveMove(
+      this.predX,
+      this.predY,
+      vx * look.speed * dt,
+      vy * look.speed * dt,
+      look.radius,
+      this.arenaW,
+      this.arenaH,
+      obstacles,
+    );
+    this.predX = next.x;
+    this.predY = next.y;
+    view.placeAt(this.predX, this.predY);
   }
 
   /** Send the movement vector, but only when it has changed. */

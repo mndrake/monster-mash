@@ -27,15 +27,37 @@ export const SERVER_URL: string =
 export const ROOM_NAME = "match";
 
 /**
- * How quickly a sprite glides toward the latest position the server sent.
- *   0 = never moves, 1 = snaps instantly (looks jittery).
- * This is our interpolation: instead of teleporting to each new server
- * position, sprites ease toward it a little each frame.
+ * Interpolation rates (per SECOND), used as `t = 1 - exp(-rate * dt)` so the
+ * smoothing is framerate-independent (the old per-frame lerp moved faster at
+ * higher frame rates). Bigger = snappier / tracks the server more tightly;
+ * smaller = floatier.
+ *
+ * Your OWN monster tracks harder so it feels responsive; other players stay a
+ * touch floatier to hide the small jitter between server updates.
  */
-export const INTERPOLATION_SMOOTHING = 0.25;
+export const LOCAL_LERP_RATE = 30;
+export const REMOTE_LERP_RATE = 16;
 
-/** Projectiles are fast, so they chase their target a bit harder than players. */
-export const PROJECTILE_SMOOTHING = 0.5;
+/** Projectiles are fast, so they chase their target hardest. */
+export const PROJECTILE_LERP_RATE = 45;
+
+/** How tightly the camera follows your monster (Phaser follow lerp, per frame). */
+export const CAMERA_FOLLOW_LERP = 0.25;
+
+// --- Local-player movement prediction -------------------------------------
+// Your own monster is simulated locally from your input (and the same collision
+// the server uses) so it responds instantly, then is gently reconciled to the
+// authoritative server position underneath.
+
+/** Per-second rate at which the predicted position eases toward the server's. */
+export const PRED_CORRECTION_RATE = 8;
+
+/**
+ * If the server position is further than this from the prediction, snap to it
+ * instead of easing — that's a teleport (super dash / respawn) or a real desync,
+ * not normal movement, so we don't want to crawl there.
+ */
+export const PRED_SNAP_DIST = 90;
 
 /** How often (ms) the client re-sends its aim direction while it's changing. */
 export const AIM_SEND_INTERVAL = 80;

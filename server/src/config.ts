@@ -10,8 +10,12 @@
  * are the last monster standing.
  */
 
-/** How many times per second the server simulates the world (the "tick"). */
-export const TICK_RATE = 20;
+/**
+ * How many times per second the server simulates the world (the "tick") AND
+ * sends state to clients. Higher = smoother motion (the client interpolates
+ * across smaller gaps), at a little more CPU/bandwidth — fine on a LAN.
+ */
+export const TICK_RATE = 30;
 
 /** Arena size in world units. We treat 1 world unit = 1 pixel on the client. */
 export const ARENA_WIDTH = 2000;
