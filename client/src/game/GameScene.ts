@@ -877,10 +877,7 @@ export class GameScene extends Phaser.Scene {
         g.fillCircle(cx + e.nx * 8, cy + e.ny * 8, r * 0.55);
       }
     }
-
-    // 3) A faint, softly pulsing line marking the exact safe edge.
-    g.lineStyle(2, 0xe6b3ff, 0.22 + 0.12 * Math.sin(t * 2));
-    g.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    // No hard outline — the gas wall itself shows where the safe zone ends.
   }
 
   /**
