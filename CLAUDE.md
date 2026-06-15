@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A private, browser-based 2D top-down brawler (monster-themed Brawl Stars clone) intended for LAN play with friends. PWA installable to a phone home screen. Currently at **Milestone 3 (Terrain)**: everything from Showdown (free-for-all rounds, three monsters, power cubes, closing poison zone) plus static terrain — **walls** that block movement *and* projectiles, and **bushes** you walk through to hide from other players.
+A private, browser-based 2D top-down brawler (monster-themed Brawl Stars clone) intended for LAN play with friends. PWA installable to a phone home screen.
+
+It's a continuous **Showdown** free-for-all: pick one of **six** monsters, drop into a shared arena, and survive the closing **poison** until you're the last standing. Power cubes (which raise your health + damage) come from **breakable boxes** and from kills. Static **terrain** matters — **walls** block movement *and* projectiles; **bushes** you walk through to hide. Rounds loop back-to-back.
+
+On top of the authoritative simulation there's a presentation/feel layer: bright procedural Brawl-Stars-style visuals (grassy field, 3D crate walls, gas-cloud poison), an on-character ammo/super HUD, an aim indicator, damage numbers, a kill feed, defeat/spawn FX, and synthesized sound effects + music (with a mute toggle). Your own monster is **client-side predicted** so it responds instantly. (Built up across milestones M1→M5; the per-milestone design notes live in `docs/`.)
 
 ## Commands
 
@@ -34,25 +38,30 @@ There is **no test suite and no linter** configured. `typecheck` is the only sta
 
 The server is the single source of truth. Clients only send **intent** (move vector, aim vector, fire, super) and render the snapshots Colyseus sends back. Never put gameplay logic — damage, hits, pickups, zone, win conditions — in the client. Anything that affects "what is true in the world" belongs in `server/src/rooms/MatchRoom.ts`.
 
-The tick loop runs at `TICK_RATE = 20` Hz on the server. Clients interpolate (~60 fps) by gliding each sprite toward its latest server position via `PlayerView.interpolate` / `ProjectileView.interpolate`. There is **no client-side prediction** — even the local player glides toward the server position. This is deliberate (simple, readable) and fine on LAN.
+The tick loop runs at `TICK_RATE = 30` Hz on the server, which also patches state to clients at 30 Hz (`setPatchRate` in `MatchRoom.onCreate` — Colyseus otherwise defaults to 20 Hz patches). **Other** players and projectiles are interpolated (~60 fps) toward their latest server position via `PlayerView.interpolate` / `ProjectileView.interpolate` (framerate-independent `1 - exp(-rate·dt)`).
+
+**Your own monster is client-side predicted** (`GameScene.predictLocal` + `client/src/game/collision.ts`, a deliberate mirror of the server's pure `geom.ts`): it moves the instant you press a direction, through the *same* wall/box collision the server runs, then reconciles to the authoritative server position underneath (ease normally, snap on a big jump like a super dash / respawn). The server is still the single source of truth — prediction is a render convenience for the local player only.
 
 ### Where to make changes
 
 | If you want to change… | Edit… |
 | --- | --- |
-| Monster stats, cube/poison/round tuning | `server/src/config.ts` |
+| Monster stats (all six), cube/poison/round/box tuning, tick rate | `server/src/config.ts` (`MONSTERS`, `CUBE_*`, `ZONE_*`/`POISON_*`, `BOX_*`, `TICK_RATE`) |
 | Map layouts (wall/bush rectangles, cube anchors), bush-reveal timing | `server/src/config.ts` (`MAPS`, `DEFAULT_MAP_ID`, `BUSH_REVEAL_MS`) **and** the mirror in `client/src/game/maps.ts` |
-| Collision math (circle-vs-AABB move/slide, segment-vs-AABB sweep) | `server/src/geom.ts` (pure, no game state; covered by `server/src/geom.test.ts`) |
-| Match simulation (movement, shots, damage, cubes, poison, phases, walls, bush-hiding) | `server/src/rooms/MatchRoom.ts` |
-| Synced state fields visible to the client | `server/src/schema/*.ts` (must use `@colyseus/schema` decorators) |
-| The transport layer / message shape | `client/src/net/Network.ts` (the **only** client file that imports `colyseus.js`) |
-| Twin-stick input / desktop controls | `client/src/input/Controls.ts` |
-| Rendering / HUD / poison overlay / round banner / terrain | `client/src/game/GameScene.ts` + `*View.ts` |
-| Arena look (grass palette, 3D crate walls, bushes, camera zoom) | `client/src/game/GameScene.ts` (`PALETTE`, `WALL_EXTRUDE`, `CAMERA_ZOOM`, `makeGrassTexture`/`drawWall`/`drawBush`) — all drawn procedurally; the old `client/public/tiles/*.jpg` masters in `art-generated/` are no longer loaded |
-| Lobby HTML / monster picker | `client/index.html` + `client/src/main.ts` |
-| Monster looks (emoji, accent, blurb) | `client/src/game/monsters.ts` |
+| Collision math (circle-vs-AABB move/slide, segment-vs-AABB sweep) | `server/src/geom.ts` (pure, covered by `server/src/geom.test.ts`) — mirrored client-side in `client/src/game/collision.ts` for prediction |
+| Match simulation (movement, shots, damage, cubes, poison, phases, walls, bush-hiding, breakable boxes) | `server/src/rooms/MatchRoom.ts` |
+| Synced state fields visible to the client | `server/src/schema/*.ts` — `Player`, `Projectile`, `PowerCube`, `Box`, `MatchState` (must use `@colyseus/schema` decorators) |
+| The transport layer / message shape / `fx` combat events | `client/src/net/Network.ts` (the **only** client file that imports `colyseus.js`) |
+| Twin-stick input / desktop controls / stuck-stick watchdog | `client/src/input/Controls.ts` |
+| Rendering / on-character HUD / poison gas / round banner / terrain / boxes | `client/src/game/GameScene.ts` + `*View.ts` |
+| Local-player movement prediction | `client/src/game/GameScene.ts` (`predictLocal`) + `client/src/game/collision.ts` |
+| Combat juice (damage numbers, kill feed, defeat/spawn FX, muzzle/hit sparks, screen shake) | `client/src/game/GameScene.ts` (driven by the server's batched `fx` events) + `PlayerView.ts` |
+| Sound effects + background music + mute | `client/src/audio/Sfx.ts` (all synthesized, no asset files; mute button / `M` key) |
+| Arena look (grass, 3D crate walls, bushes, gas poison, camera zoom) | `client/src/game/GameScene.ts` (`PALETTE`, `WALL_EXTRUDE`, `CAMERA_ZOOM`, `makeGrassTexture`/`drawWall`/`drawBush`/`drawPoison`) — all procedural; the old `client/public/tiles/*.jpg` masters in `art-generated/` are no longer loaded |
+| Lobby HTML / monster picker (portraits + stat bars) | `client/index.html` + `client/src/main.ts` + `client/src/style.css` |
+| Monster looks (emoji, accent, blurb) + display stats | `client/src/game/monsters.ts` |
 
-Adding a new monster is mostly a row of numbers in `server/src/config.ts` (`MONSTERS` array) plus a corresponding look entry on the client.
+Adding a new monster is mostly a row of numbers in `server/src/config.ts` (`MONSTERS` array) plus a look entry (with the display stats) in `client/src/game/monsters.ts` and its id in `MONSTER_ORDER`.
 
 ### Terrain (walls + bushes)
 
@@ -60,7 +69,13 @@ Static terrain is **server-authoritative gameplay**, not decoration: walls block
 
 ### The transport boundary
 
-`client/src/net/Network.ts` is the only file in the client that knows the backend is Colyseus. The rest of the client sees plain `PlayerSnapshot` / `ProjectileSnapshot` / `CubeSnapshot` / `MatchInfo` objects and a `NetEvents` callback bag. Keep it that way — if you need new state to flow from server to client, add a field to the schema (`server/src/schema/`), expose it through a snapshot type in `Network.ts`, and consume it from `GameScene`. Don't import `colyseus.js` from anywhere else.
+`client/src/net/Network.ts` is the only file in the client that knows the backend is Colyseus. The rest of the client sees plain `PlayerSnapshot` / `ProjectileSnapshot` / `CubeSnapshot` / `BoxSnapshot` / `MatchInfo` objects and a `NetEvents` callback bag. Keep it that way — if you need new state to flow from server to client, add a field to the schema (`server/src/schema/`), expose it through a snapshot type in `Network.ts`, and consume it from `GameScene`. Don't import `colyseus.js` from anywhere else.
+
+Besides per-tick state sync, the server sends **discrete combat events** for things that are *moments* not *state* (a hit's damage + position, a KO's victim/killer) — the per-tick snapshot collapses several hits into one health delta, so the client can't reconstruct them. `MatchRoom` accumulates these during a tick and `broadcast("fx", …)`s them once; `Network.ts` fans them out as `onHit` / `onKO`, which drive damage numbers, the kill feed, and defeat explosions. Poison damage deliberately emits no `hit` events (it ticks every frame — would spam).
+
+### Breakable boxes
+
+Power cubes come from breaking **boxes** (and from kills) — there is no free cube scatter. Boxes are a synced `Box` entity (AABB + `hp`/`maxHp`), placed each round clear of walls/other boxes/spawns. Unlike the static `walls`/`bushes`, boxes are **dynamic** (they take damage and vanish), so the server combines `walls ++ standing boxes` for player movement, the super dash, and projectile sweeps (`MatchRoom.obstacleRects`). A shot soaks into a box and damages it (boxes do **not** charge the shooter's super — only enemy hits do); at 0 hp it breaks and drops cubes. The client mirrors box footprints in `GameScene.boxRects` so prediction collides with them too.
 
 ### Room codes
 
