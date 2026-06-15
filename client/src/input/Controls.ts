@@ -45,6 +45,7 @@ export class Controls {
   private leftZone?: HTMLDivElement;
   private rightZone?: HTMLDivElement;
   private superButton: HTMLButtonElement;
+  private gameEl: HTMLElement;
 
   private joyX = 0;
   private joyY = 0;
@@ -54,11 +55,15 @@ export class Controls {
   private lastAim: Dir = { x: 1, y: 0 };
   private aimMoved = false;
   private lastAimSent = 0;
-  /** True while the aim stick is being held (drives the aim indicator on touch). */
+  /** True while a stick is being held. If one of these is still set once every
+   *  finger is off the screen, nipplejs missed its `end` (the stuck-stick bug)
+   *  and the watchdog rebuilds the sticks. */
   private aimActive = false;
+  private moveActive = false;
 
   constructor(scene: Phaser.Scene, private events: ControlEvents) {
     const gameEl = document.getElementById("game")!;
+    this.gameEl = gameEl;
 
     // ---- Keyboard (desktop) ----
     const keyboard = scene.input.keyboard!;
@@ -74,7 +79,17 @@ export class Controls {
       rightArrow: keyboard.addKey(Codes.RIGHT),
     };
 
-    if (IS_TOUCH) this.createTouchSticks(gameEl);
+    if (IS_TOUCH) {
+      this.createTouchSticks(gameEl);
+      // Self-healing watchdog for nipplejs's occasional missed `end` (a touch
+      // cancelled/stolen without a clean touchend leaves the nipple stuck on
+      // screen and dead). When every finger is up — or the app loses focus —
+      // but a stick still reads active, rebuild the sticks from scratch.
+      document.addEventListener("touchend", this.onTouchRelease, true);
+      document.addEventListener("touchcancel", this.onTouchRelease, true);
+      document.addEventListener("visibilitychange", this.onAppBlur);
+      window.addEventListener("blur", this.onAppBlur);
+    }
 
     // ---- SUPER button (both platforms; on top of the right zone) ----
     this.superButton = document.createElement("button");
@@ -112,6 +127,9 @@ export class Controls {
       // joystick that lingers after the real one is released.
       maxNumberOfJoysticks: 1,
     });
+    this.moveStick.on("start", () => {
+      this.moveActive = true;
+    });
     this.moveStick.on("move", (event) => {
       this.joyX = event.data.vector.x;
       this.joyY = -event.data.vector.y; // nipplejs y points up; screen y points down
@@ -119,6 +137,7 @@ export class Controls {
     this.moveStick.on("end", () => {
       this.joyX = 0;
       this.joyY = 0;
+      this.moveActive = false;
     });
 
     // RIGHT: aim + fire.
@@ -158,6 +177,38 @@ export class Controls {
     return this.aimActive;
   }
 
+  /**
+   * When the last finger leaves the screen, give nipplejs a moment to fire its
+   * `end` (which clears the active flags), then — if a stick is somehow STILL
+   * active — it's the stuck-stick bug, so rebuild the sticks clean. The delay
+   * matters: it lets a normal release (and its `onFire`) complete first.
+   */
+  private onTouchRelease = (e: TouchEvent) => {
+    if (e.touches.length > 0) return; // a finger is still down on the other stick
+    setTimeout(() => {
+      if (this.aimActive || this.moveActive) this.rebuildSticks();
+    }, 60);
+  };
+
+  /** Losing focus/visibility can drop touch-end events entirely — reset then. */
+  private onAppBlur = () => {
+    if (this.aimActive || this.moveActive) this.rebuildSticks();
+  };
+
+  /** Tear the sticks (and any orphaned nipple DOM) down and recreate them. */
+  private rebuildSticks() {
+    this.moveStick?.destroy();
+    this.aimStick?.destroy();
+    this.leftZone?.remove(); // removing the zone also drops any stuck nipple
+    this.rightZone?.remove();
+    this.joyX = 0;
+    this.joyY = 0;
+    this.aimActive = false;
+    this.moveActive = false;
+    this.aimMoved = false;
+    this.createTouchSticks(this.gameEl);
+  }
+
   private blockContext = (e: Event) => e.preventDefault();
 
   /** The current movement input, blended from joystick + keyboard. */
@@ -184,5 +235,9 @@ export class Controls {
     this.leftZone?.remove();
     this.rightZone?.remove();
     document.getElementById("game")?.removeEventListener("contextmenu", this.blockContext);
+    document.removeEventListener("touchend", this.onTouchRelease, true);
+    document.removeEventListener("touchcancel", this.onTouchRelease, true);
+    document.removeEventListener("visibilitychange", this.onAppBlur);
+    window.removeEventListener("blur", this.onAppBlur);
   }
 }
