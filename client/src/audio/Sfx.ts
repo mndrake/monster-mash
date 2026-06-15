@@ -15,6 +15,8 @@ export class Sfx {
   private ctx?: AudioContext;
   private master?: GainNode;
   private enabled = true;
+  /** Whether the one-time iOS silent-buffer kick has fired. */
+  private unlocked = false;
 
   // --- looping background music (also synthesized, no files) ---
   private musicGain?: GainNode;
@@ -39,9 +41,28 @@ export class Sfx {
     }
   }
 
-  /** Unlock playback after a user gesture (required on mobile). */
+  /**
+   * Unlock playback. Call this from inside a user-gesture handler.
+   *
+   * Desktop just needs resume(). iOS/iPadOS WebKit (which Chrome on iPad uses
+   * too) is stricter: the context stays silent — even when its state reads
+   * "running" — until a sound is actually STARTED during the gesture. So we also
+   * fire a one-sample silent buffer the first time. Safe to call repeatedly.
+   */
   resume(): void {
-    if (this.ctx && this.ctx.state === "suspended") void this.ctx.resume();
+    if (!this.ctx) return;
+    if (this.ctx.state === "suspended") void this.ctx.resume();
+    if (!this.unlocked) {
+      try {
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.ctx.createBuffer(1, 1, 22050);
+        src.connect(this.ctx.destination);
+        src.start(0);
+        this.unlocked = true;
+      } catch {
+        /* ignore — best-effort kick */
+      }
+    }
   }
 
   setEnabled(on: boolean): void {

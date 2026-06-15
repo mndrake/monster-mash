@@ -61,6 +61,9 @@ const WALL_EXTRUDE = 16;
 /** How zoomed-in the camera sits — bigger monsters, Brawl-Stars framing. */
 const CAMERA_ZOOM = 1.6;
 
+/** Gestures we listen for to unlock suspended audio (iOS prefers touchend/click). */
+const AUDIO_UNLOCK_EVENTS = ["pointerdown", "touchstart", "touchend", "mousedown", "click", "keydown"];
+
 /**
  * The one and only gameplay scene. Each frame it:
  *   1. Reads our input (move + aim/fire/super) and sends the INTENT to the server.
@@ -146,7 +149,7 @@ export class GameScene extends Phaser.Scene {
     // ANY gesture (joystick touch, button tap, key) unlocks it. resume() is
     // idempotent, so leaving these attached is harmless.
     this.audioUnlock = () => this.sfx.resume();
-    for (const ev of ["pointerdown", "touchstart", "mousedown", "keydown"]) {
+    for (const ev of AUDIO_UNLOCK_EVENTS) {
       document.addEventListener(ev, this.audioUnlock, { capture: true, passive: true });
     }
 
@@ -231,7 +234,7 @@ export class GameScene extends Phaser.Scene {
       this.sfx.close();
       this.muteBtn?.remove();
       if (this.audioUnlock) {
-        for (const ev of ["pointerdown", "touchstart", "mousedown", "keydown"]) {
+        for (const ev of AUDIO_UNLOCK_EVENTS) {
           document.removeEventListener(ev, this.audioUnlock, { capture: true });
         }
       }
