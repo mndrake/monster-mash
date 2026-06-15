@@ -2,6 +2,7 @@ import { Schema, type, MapSchema } from "@colyseus/schema";
 import { Player } from "./Player";
 import { Projectile } from "./Projectile";
 import { PowerCube } from "./PowerCube";
+import { Box } from "./Box";
 
 /**
  * The whole shared state of one match. Colyseus automatically sends the
@@ -49,4 +50,6 @@ export class MatchState extends Schema {
   @type({ map: Projectile }) projectiles = new MapSchema<Projectile>();
   /** Collectible power cubes, keyed by a server-assigned id. */
   @type({ map: PowerCube }) cubes = new MapSchema<PowerCube>();
+  /** Breakable boxes (drop cubes when destroyed), keyed by a server id. */
+  @type({ map: Box }) boxes = new MapSchema<Box>();
 }

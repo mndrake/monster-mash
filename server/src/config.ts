@@ -65,6 +65,27 @@ export const CUBE_DAMAGE_BONUS = 0.12; // +12% damage per cube
 export const CUBE_PICKUP_RADIUS = 34;
 
 // ---------------------------------------------------------------------------
+//  Breakable boxes (Brawl-Stars-style cube crates)
+// ---------------------------------------------------------------------------
+//
+// In Showdown, cubes come from BREAKING BOXES and from kills — not a free
+// scatter. Boxes block movement + shots like a wall until destroyed, then drop
+// power cubes. They're dynamic (they take damage and vanish), so unlike the
+// static MAP walls/bushes they're synced as entities.
+
+/** How many breakable boxes are placed when a round starts. */
+export const BOX_COUNT = 10;
+
+/** A box's health. Damage from any shot whittles it down. */
+export const BOX_HP = 1600;
+
+/** Box edge length (world units) — square, smaller than the static walls. */
+export const BOX_SIZE = 72;
+
+/** How many power cubes a box drops when it breaks. */
+export const BOX_CUBES = 1;
+
+// ---------------------------------------------------------------------------
 //  Poison zone (the safe area shrinks; standing outside hurts)
 // ---------------------------------------------------------------------------
 
