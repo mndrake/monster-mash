@@ -47,8 +47,21 @@ const errorEl = document.getElementById("error")!;
 
 let game: Phaser.Game | undefined;
 
-// ---- Monster picker: one tappable card per monster type ----
+// ---- Monster picker: one tappable card per monster, with stat bars ----
 let chosenMonster = MONSTER_ORDER[0];
+
+// Normalize each stat against the strongest monster so the bars are comparable.
+const looks = MONSTER_ORDER.map(lookOf);
+const statMax = {
+  health: Math.max(...looks.map((l) => l.health)),
+  damage: Math.max(...looks.map((l) => l.damage)),
+  speed: Math.max(...looks.map((l) => l.speed)),
+  range: Math.max(...looks.map((l) => l.range)),
+};
+const statRow = (label: string, value: number, max: number) =>
+  `<span class="m-stat"><span class="m-stat-label">${label}</span>` +
+  `<span class="m-bar"><i style="width:${Math.round((value / max) * 100)}%"></i></span></span>`;
+
 MONSTER_ORDER.forEach((id) => {
   const look = lookOf(id);
   const card = document.createElement("button");
@@ -56,7 +69,16 @@ MONSTER_ORDER.forEach((id) => {
   card.className = "monster-card";
   card.dataset.id = id;
   card.style.setProperty("--accent", look.accent);
-  card.innerHTML = `<span class="m-emoji">${look.emoji}</span><span class="m-name">${look.name}</span><span class="m-blurb">${look.blurb}</span>`;
+  card.innerHTML =
+    `<span class="m-portrait">${look.emoji}</span>` +
+    `<span class="m-name">${look.name}</span>` +
+    `<span class="m-stats">` +
+    statRow("HP", look.health, statMax.health) +
+    statRow("DMG", look.damage, statMax.damage) +
+    statRow("SPD", look.speed, statMax.speed) +
+    statRow("RNG", look.range, statMax.range) +
+    `</span>` +
+    `<span class="m-blurb">${look.blurb}</span>`;
   card.addEventListener("click", () => selectMonster(id));
   monstersEl.appendChild(card);
 });

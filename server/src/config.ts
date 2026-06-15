@@ -233,6 +233,87 @@ export const MONSTERS: MonsterType[] = [
     superSpreadDeg: 0,
     superDashUnits: 0,
   },
+  {
+    // VEX — a long-range sniper. Fragile, slow to fire, but reaches across the
+    // whole arena and hits hard; its super is one huge piercing-fast bolt.
+    id: "vex",
+    name: "Vex",
+    accent: "#ffd740",
+    maxHealth: 2800,
+    speed: 300,
+    radius: 19,
+    ammoMax: 3,
+    reloadMs: 1700,
+    attackCooldownMs: 520,
+    projectileSpeed: 1150,
+    projectileRange: 900, // longest range in the game
+    projectileRadius: 10,
+    projectileDamage: 1120,
+    projectileCount: 1,
+    spreadDeg: 0,
+    superChargePerHit: 0.25, // ~4 hits
+    superSpeed: 1400,
+    superRange: 1000,
+    superRadius: 22,
+    superDamage: 2200,
+    superCount: 1,
+    superSpreadDeg: 0,
+    superDashUnits: 0,
+  },
+  {
+    // SPIKE — a close-range shotgun. A wide fan of pellets that shreds up close
+    // and fizzles at range; its super dashes in and unloads an even wider blast.
+    id: "spike",
+    name: "Spike",
+    accent: "#ff6e40",
+    maxHealth: 4800,
+    speed: 300,
+    radius: 24,
+    ammoMax: 3,
+    reloadMs: 1500,
+    attackCooldownMs: 520,
+    projectileSpeed: 780,
+    projectileRange: 300, // short — get in their face
+    projectileRadius: 12,
+    projectileDamage: 360, // per pellet (×5 ≈ 1800 point-blank)
+    projectileCount: 5,
+    spreadDeg: 42,
+    superChargePerHit: 0.18, // ~6 hits
+    superSpeed: 820,
+    superRange: 340,
+    superRadius: 13,
+    superDamage: 440,
+    superCount: 8,
+    superSpreadDeg: 72,
+    superDashUnits: 220, // lunge in, then blast
+  },
+  {
+    // WISP — a fast skirmisher. The quickest monster with rapid, light shots and
+    // a deep clip; harass, dodge, and let the volume add up. Super is a 3-shot fan.
+    id: "wisp",
+    name: "Wisp",
+    accent: "#b2ff59",
+    maxHealth: 3200,
+    speed: 380, // fastest
+    radius: 18,
+    ammoMax: 4,
+    reloadMs: 900,
+    attackCooldownMs: 190, // rapid fire
+    projectileSpeed: 820,
+    projectileRange: 520,
+    projectileRadius: 9,
+    projectileDamage: 480,
+    projectileCount: 1,
+    spreadDeg: 0,
+    superChargePerHit: 0.16, // ~7 hits (fires often)
+    superSpeed: 900,
+    superRange: 560,
+    superRadius: 11,
+    superDamage: 520,
+    superCount: 3,
+    superSpreadDeg: 30,
+    superDashUnits: 0,
+  },
 ];
 
 /** Look one up by id (falls back to the first monster if an id is unknown). */
