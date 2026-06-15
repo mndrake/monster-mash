@@ -69,5 +69,9 @@ export const FIRE_REPEAT_INTERVAL = 110;
  * How long to wait for the server connection before giving up. A blocked port
  * makes the connection HANG (no error) rather than fail fast, so we surface our
  * own timeout instead of leaving the player on a blank screen.
+ *
+ * Set generously because a free hosted server SPINS DOWN when idle and takes
+ * ~50s to cold-start on the first connect — a short timeout would abort a
+ * perfectly good (just sleepy) server. The connecting overlay explains the wait.
  */
-export const CONNECT_TIMEOUT_MS = 9000;
+export const CONNECT_TIMEOUT_MS = 60000;

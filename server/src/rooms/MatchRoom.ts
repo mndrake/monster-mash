@@ -157,6 +157,12 @@ export class MatchRoom extends Room<MatchState> {
       this.beginCountdown();
     });
 
+    // Hold a reserved seat longer than the 15s default. On a cold-started free
+    // host (or a slow phone), the gap between the matchmaking HTTP reservation
+    // and the WebSocket that consumes it can exceed 15s — which surfaces as a
+    // "seat reservation expired / not valid" error on join. 40s is generous.
+    this.setSeatReservationTime(40);
+
     this.setSimulationInterval(
       (deltaMs) => this.update(deltaMs),
       1000 / TICK_RATE,

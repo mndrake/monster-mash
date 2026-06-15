@@ -64,8 +64,18 @@ const PALETTE = {
 /** How tall (px) walls appear to be extruded toward the camera. */
 const WALL_EXTRUDE = 16;
 
-/** How zoomed-in the camera sits — bigger monsters, Brawl-Stars framing. */
-const CAMERA_ZOOM = 1.6;
+/**
+ * Camera zoom is ADAPTIVE so small screens (phones) see more of the arena
+ * instead of a tiny keyhole. We pick the largest zoom that still fits a target
+ * slice of the world on screen, clamped between these bounds:
+ *   - MAX keeps the Brawl-Stars "big monsters" framing on roomy desktops.
+ *   - MIN stops monsters from getting too tiny on very small screens.
+ * VIEW_* is the world rectangle we try to keep visible (zoom = min(w/W, h/H)).
+ */
+const CAMERA_ZOOM_MAX = 1.6;
+const CAMERA_ZOOM_MIN = 0.95;
+const VIEW_WORLD_W = 760;
+const VIEW_WORLD_H = 420;
 
 /** Gestures we listen for to unlock suspended audio (iOS prefers touchend/click). */
 const AUDIO_UNLOCK_EVENTS = ["pointerdown", "touchstart", "touchend", "mousedown", "click", "keydown"];
@@ -152,6 +162,12 @@ export class GameScene extends Phaser.Scene {
     // button asks the server to begin the round.
     this.waiting = new WaitingRoom(this.roomCode);
     this.waiting.onStart(() => this.net.sendStart());
+    // Leave the room and return to the main lobby (e.g. if the host left or you
+    // want a different game). The empty message means the lobby shows no error.
+    this.waiting.onLeave(() => {
+      this.net.leave();
+      this.game.events.emit("join-error", "");
+    });
     // Out-of-bounds is a dark grassy void; the playfield is painted in setupArena.
     this.cameras.main.setBackgroundColor("#1d3318");
     this.makeGrassTexture();
@@ -162,6 +178,10 @@ export class GameScene extends Phaser.Scene {
       onFire: (d) => this.aliveSelf() && this.net.sendFire(d.x, d.y),
       onSuper: (d) => this.aliveSelf() && this.net.sendSuper(d.x, d.y),
     });
+
+    // Refit the camera zoom when the canvas resizes (phone rotation, window
+    // resize) so the visible slice of the arena stays sensible.
+    this.scale.on("resize", this.applyZoom, this);
 
     this.superKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.input.on("pointermove", (p: Phaser.Input.Pointer) => {
@@ -214,7 +234,9 @@ export class GameScene extends Phaser.Scene {
       .setDepth(110);
 
     // Show a visible "Connecting…" overlay until the first server state arrives.
-    this.showStatus(`Connecting to server…\n${SERVER_URL}`);
+    // The first connect after a quiet spell can take ~50s while a free host
+    // wakes from sleep, so we say so rather than look hung.
+    this.showStatus(`Connecting to server…\nThe first join can take up to a minute\nwhile the server wakes up.`);
 
     // A stuck connection often HANGS instead of erroring, so we time out
     // ourselves and show what stage we got stuck at.
@@ -268,6 +290,7 @@ export class GameScene extends Phaser.Scene {
 
     this.events.once("shutdown", () => {
       if (this.connectTimer) window.clearTimeout(this.connectTimer);
+      this.scale.off("resize", this.applyZoom, this);
       this.hideStatus();
       this.controls.destroy();
       this.waiting.destroy();
@@ -409,9 +432,24 @@ export class GameScene extends Phaser.Scene {
     for (const w of map.walls) this.drawWall(wallG, wallShadowG, w);
 
     this.cameras.main.setBounds(0, 0, width, height);
-    this.cameras.main.setZoom(CAMERA_ZOOM);
+    this.applyZoom();
     const me = this.players.get(this.net.selfId);
     if (me) this.cameras.main.startFollow(me.body, true, CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_LERP);
+  }
+
+  /**
+   * Fit the camera zoom to the current viewport: the biggest zoom that still
+   * keeps a VIEW_WORLD_W×VIEW_WORLD_H slice of the arena on screen, clamped.
+   * Called on setup and whenever the canvas resizes (rotation, window change),
+   * so phones always show a sensible amount of the arena. startFollow keeps the
+   * local monster centered, so it stays on-screen at any zoom.
+   */
+  private applyZoom() {
+    const { width: vw, height: vh } = this.scale.gameSize;
+    if (!vw || !vh) return;
+    const fit = Math.min(vw / VIEW_WORLD_W, vh / VIEW_WORLD_H);
+    const zoom = Math.max(CAMERA_ZOOM_MIN, Math.min(CAMERA_ZOOM_MAX, fit));
+    this.cameras.main.setZoom(zoom);
   }
 
   /** Paint one wall AABB as a raised wooden crate (shadow + side + top). */
@@ -910,7 +948,7 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * Place a `scrollFactor(0)` UI object at screen pixel (sx, sy) at its intended
-   * size. The camera zoom (CAMERA_ZOOM) also scales + offsets fixed UI, which
+   * size. The (now adaptive) camera zoom also scales + offsets fixed UI, which
    * would shove the HUD off-screen and oversize the banner — this counter-acts
    * it so the overlay is independent of the world zoom (and resize-proof).
    */

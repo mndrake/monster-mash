@@ -19,7 +19,9 @@ export class WaitingRoom {
   private countEl: HTMLSpanElement;
   private startBtn: HTMLButtonElement;
   private hintEl: HTMLDivElement;
+  private leaveBtn: HTMLButtonElement;
   private onStartCb?: () => void;
+  private onLeaveCb?: () => void;
   private shown = false;
 
   constructor(roomCode: string) {
@@ -34,18 +36,26 @@ export class WaitingRoom {
       `<ol class="wr-list"></ol>` +
       `<button type="button" class="wr-start">Start game</button>` +
       `<div class="wr-hint">Waiting for the host to start…</div>` +
+      `<button type="button" class="wr-leave">Leave room</button>` +
       `</div>`;
     this.listEl = this.el.querySelector(".wr-list") as HTMLOListElement;
     this.countEl = this.el.querySelector(".wr-count") as HTMLSpanElement;
     this.startBtn = this.el.querySelector(".wr-start") as HTMLButtonElement;
     this.hintEl = this.el.querySelector(".wr-hint") as HTMLDivElement;
+    this.leaveBtn = this.el.querySelector(".wr-leave") as HTMLButtonElement;
     this.startBtn.addEventListener("click", () => this.onStartCb?.());
+    this.leaveBtn.addEventListener("click", () => this.onLeaveCb?.());
     this.el.style.display = "none";
     document.body.appendChild(this.el);
   }
 
   onStart(cb: () => void): void {
     this.onStartCb = cb;
+  }
+
+  /** Leave the room and return to the main lobby (to start/join a new game). */
+  onLeave(cb: () => void): void {
+    this.onLeaveCb = cb;
   }
 
   show(): void {
@@ -172,6 +182,12 @@ function injectStyles(): void {
     }
     #waiting-room .wr-start:active { transform: translateY(1px); }
     #waiting-room .wr-hint { margin-top: 8px; text-align: center; opacity: 0.7; font-size: 14px; }
+    #waiting-room .wr-leave {
+      margin-top: 4px; padding: 10px; border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px; background: transparent; color: #c7c7e0;
+      font: 600 14px/1 inherit; cursor: pointer;
+    }
+    #waiting-room .wr-leave:active { transform: translateY(1px); }
   `;
   const style = document.createElement("style");
   style.textContent = css;

@@ -157,7 +157,15 @@ export class Network {
     monster: string,
     events: NetEvents,
   ): Promise<void> {
-    this.room = await this.client.joinOrCreate(ROOM_NAME, { roomCode, name, monster });
+    // Join, retrying once on failure. A stale/expired seat reservation (common
+    // right after a cold start, when the WS lags behind the matchmaking HTTP)
+    // throws here; a second joinOrCreate gets a fresh reservation.
+    try {
+      this.room = await this.client.joinOrCreate(ROOM_NAME, { roomCode, name, monster });
+    } catch {
+      await new Promise((r) => setTimeout(r, 600));
+      this.room = await this.client.joinOrCreate(ROOM_NAME, { roomCode, name, monster });
+    }
     this.selfId = this.room.sessionId;
 
     const $ = getStateCallbacks(this.room);
