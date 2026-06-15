@@ -6,10 +6,12 @@ import {
   type CubeSnapshot,
   type HitEvent,
   type KOEvent,
+  type BoxSnapshot,
 } from "../net/Network";
 import { PlayerView } from "./PlayerView";
 import { ProjectileView } from "./ProjectileView";
 import { PowerCubeView } from "./PowerCubeView";
+import { BoxView } from "./BoxView";
 import { Controls, type Dir } from "../input/Controls";
 import {
   INTERPOLATION_SMOOTHING,
@@ -79,6 +81,7 @@ export class GameScene extends Phaser.Scene {
   private players = new Map<string, PlayerView>();
   private projectiles = new Map<string, ProjectileView>();
   private cubes = new Map<string, PowerCubeView>();
+  private boxes = new Map<string, BoxView>();
 
   private roomCode = "";
   private monster = "gnash";
@@ -217,6 +220,9 @@ export class GameScene extends Phaser.Scene {
         onProjectileRemove: (id) => this.removeProjectile(id),
         onCubeAdd: (c) => this.addCube(c),
         onCubeRemove: (id) => this.removeCube(id),
+        onBoxAdd: (b) => this.addBox(b),
+        onBoxChange: (b) => this.boxes.get(b.id)?.update(b),
+        onBoxRemove: (id) => this.removeBox(id),
         onHit: (h) => this.onHit(h),
         onKO: (k) => this.onKO(k),
       })
@@ -574,6 +580,42 @@ export class GameScene extends Phaser.Scene {
   private removeCube(id: string) {
     this.cubes.get(id)?.destroy();
     this.cubes.delete(id);
+  }
+
+  private addBox(b: BoxSnapshot) {
+    this.boxes.set(b.id, new BoxView(this, b));
+  }
+  /** A box was destroyed: pop a woody break burst where it stood. */
+  private removeBox(id: string) {
+    const view = this.boxes.get(id);
+    if (!view) return;
+    // Only burst for an in-play break, not the bulk clear at round reset.
+    if (this.net.match?.phase === "playing") {
+      const c = view.center;
+      this.spawnBurst(c.x, c.y, 0xd9a066, 22);
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + Math.random() * 0.5;
+        const dist = 24 + Math.random() * 34;
+        const bit = this.add
+          .rectangle(c.x, c.y, 6 + Math.random() * 4, 6 + Math.random() * 4, 0x9c6a3c, 1)
+          .setStrokeStyle(1.5, 0x3a2614, 0.6)
+          .setAngle(Math.random() * 90)
+          .setDepth(7);
+        this.tweens.add({
+          targets: bit,
+          x: c.x + Math.cos(a) * dist,
+          y: c.y + Math.sin(a) * dist,
+          angle: bit.angle + 120,
+          alpha: 0,
+          scale: 0.3,
+          duration: 380 + Math.random() * 160,
+          ease: "Quad.easeOut",
+          onComplete: () => bit.destroy(),
+        });
+      }
+    }
+    view.destroy();
+    this.boxes.delete(id);
   }
 
   /** Is our own monster currently alive? (Gate sending attack intent.) */

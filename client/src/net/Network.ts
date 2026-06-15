@@ -54,6 +54,17 @@ export interface CubeSnapshot {
   y: number;
 }
 
+/** A breakable box. `hp`/`maxHp` drive how cracked the crate looks. */
+export interface BoxSnapshot {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  hp: number;
+  maxHp: number;
+}
+
 /** Everything about the match flow + poison zone, polled each frame by the game. */
 export interface MatchInfo {
   phase: string;
@@ -101,6 +112,9 @@ export interface NetEvents {
   onProjectileRemove: (id: string) => void;
   onCubeAdd: (cube: CubeSnapshot) => void;
   onCubeRemove: (id: string) => void;
+  onBoxAdd: (box: BoxSnapshot) => void;
+  onBoxChange: (box: BoxSnapshot) => void;
+  onBoxRemove: (id: string) => void;
   /** A shot landed on someone (damage numbers / sparks). */
   onHit?: (hit: HitEvent) => void;
   /** Someone was defeated (explosion / kill feed). */
@@ -165,6 +179,13 @@ export class Network {
     // ---- power cubes ----
     $(this.room.state).cubes.onAdd((cube, id) => events.onCubeAdd({ id, x: cube.x, y: cube.y }));
     $(this.room.state).cubes.onRemove((_cube, id) => events.onCubeRemove(id));
+
+    // ---- breakable boxes ----
+    $(this.room.state).boxes.onAdd((box, id) => {
+      events.onBoxAdd(boxSnap(id, box));
+      $(box).onChange(() => events.onBoxChange(boxSnap(id, box)));
+    });
+    $(this.room.state).boxes.onRemove((_box, id) => events.onBoxRemove(id));
 
     // ---- juice events (batched once per tick, outside the state sync) ----
     this.room.onMessage("fx", (list: Array<HitEvent & KOEvent & { t: string }>) => {
@@ -258,4 +279,11 @@ function projSnap(
   p: { x: number; y: number; radius: number; color: string; kind: string },
 ): ProjectileSnapshot {
   return { id, x: p.x, y: p.y, radius: p.radius, color: p.color, kind: p.kind };
+}
+
+function boxSnap(
+  id: string,
+  b: { x: number; y: number; w: number; h: number; hp: number; maxHp: number },
+): BoxSnapshot {
+  return { id, x: b.x, y: b.y, w: b.w, h: b.h, hp: b.hp, maxHp: b.maxHp };
 }

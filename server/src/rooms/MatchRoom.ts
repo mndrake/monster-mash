@@ -3,6 +3,7 @@ import { MatchState } from "../schema/MatchState";
 import { Player } from "../schema/Player";
 import { Projectile } from "../schema/Projectile";
 import { PowerCube } from "../schema/PowerCube";
+import { Box } from "../schema/Box";
 import {
   ARENA_WIDTH,
   ARENA_HEIGHT,
@@ -17,10 +18,13 @@ import {
   ROUNDOVER_MS,
   REGEN_DELAY_MS,
   REGEN_FRACTION_PER_SEC,
-  POWER_CUBE_COUNT,
   CUBE_HEALTH_BONUS,
   CUBE_DAMAGE_BONUS,
   CUBE_PICKUP_RADIUS,
+  BOX_COUNT,
+  BOX_HP,
+  BOX_SIZE,
+  BOX_CUBES,
   ZONE_GRACE_MS,
   ZONE_SHRINK_SPEED,
   ZONE_MIN_HALF,
@@ -167,10 +171,11 @@ export class MatchRoom extends Room<MatchState> {
     this.resetRound();
   }
 
-  /** Respawn everyone, reset the zone, clear shots, and scatter fresh cubes. */
+  /** Respawn everyone, reset the zone, clear shots, and place fresh boxes. */
   private resetRound() {
     this.state.projectiles.clear();
     this.state.cubes.clear();
+    this.state.boxes.clear();
 
     // Safe zone starts as the whole arena.
     this.state.safeMinX = 0;
@@ -178,14 +183,15 @@ export class MatchRoom extends Room<MatchState> {
     this.state.safeMaxX = this.state.width;
     this.state.safeMaxY = this.state.height;
 
-    // Scatter power cubes (kept away from the very edges and out of walls).
-    const margin = 200;
-    for (let i = 0; i < POWER_CUBE_COUNT; i++) {
-      const spot = this.findClearCubeSpot(margin);
-      this.spawnCube(spot.x, spot.y);
+    // Place breakable boxes. Power cubes now come from breaking these (and from
+    // kills), Showdown-style — there is no free cube scatter.
+    for (let i = 0; i < BOX_COUNT; i++) {
+      const spot = this.findClearBoxSpot();
+      if (spot) this.spawnBox(spot.x, spot.y);
     }
 
-    // Respawn every player at full strength in a spread-out spot.
+    // Respawn every player at full strength in a spread-out spot (clear of the
+    // boxes we just placed, so nobody starts trapped inside one).
     this.state.players.forEach((p) => this.respawn(p));
     this.state.aliveCount = this.state.players.size;
   }
@@ -327,13 +333,24 @@ export class MatchRoom extends Room<MatchState> {
   }
 
   /**
-   * Move a player by (mx, my), resolving against walls one axis at a time so
-   * they slide along a wall face instead of stopping dead. Circle-vs-AABB:
-   * after moving on an axis, if the body overlaps a wall, snap it back to the
-   * nearest face on that axis.
+   * Every solid axis-aligned obstacle right now: the static walls PLUS every
+   * box still standing. Boxes block movement and shots exactly like walls until
+   * they're broken, so the same collision routines just take this combined list.
+   */
+  private obstacleRects(): Rect[] {
+    const rects: Rect[] = this.walls.slice();
+    this.state.boxes.forEach((b) => rects.push({ x: b.x, y: b.y, w: b.w, h: b.h }));
+    return rects;
+  }
+
+  /**
+   * Move a player by (mx, my), resolving against walls + boxes one axis at a
+   * time so they slide along a face instead of stopping dead. Circle-vs-AABB:
+   * after moving on an axis, if the body overlaps an obstacle, snap it back to
+   * the nearest face on that axis.
    */
   private moveWithWalls(p: Player, mx: number, my: number, r: number) {
-    const next = resolveMove(p.x, p.y, mx, my, r, this.state.width, this.state.height, this.walls);
+    const next = resolveMove(p.x, p.y, mx, my, r, this.state.width, this.state.height, this.obstacleRects());
     p.x = next.x;
     p.y = next.y;
   }
@@ -386,13 +403,14 @@ export class MatchRoom extends Room<MatchState> {
     if (type.superDashUnits > 0) {
       const r = type.radius;
       const steps = 12;
+      const obstacles = this.obstacleRects();
       let tx = p.x;
       let ty = p.y;
       for (let i = 1; i <= steps; i++) {
         const f = (i / steps) * type.superDashUnits;
         const cx = clamp(p.x + dir.x * f, r, this.state.width - r);
         const cy = clamp(p.y + dir.y * f, r, this.state.height - r);
-        if (this.walls.some((w) => circleRectOverlap(cx, cy, r, w))) break;
+        if (obstacles.some((w) => circleRectOverlap(cx, cy, r, w))) break;
         tx = cx;
         ty = cy;
       }
@@ -506,19 +524,30 @@ export class MatchRoom extends Room<MatchState> {
         return;
       }
 
-      // Hit a wall along this tick's path? Swept segment vs each wall (expanded
-      // by the shot's radius) so fast supers can't tunnel through thin chokes.
-      let hitWall = false;
+      // Hit a wall or a box along this tick's path? Swept segment vs each AABB
+      // (expanded by the shot's radius) so fast supers can't tunnel a thin choke.
+      // Take the EARLIEST hit; if it's a box, the box soaks the shot and takes
+      // damage (boxes do NOT charge the shooter's super — only enemy hits do).
+      let earliestT = Infinity;
+      let hitBoxKey: string | undefined;
       for (const w of this.walls) {
         const t = segmentRectHit(ox, oy, proj.x, proj.y, w, proj.radius);
-        if (t !== null) {
-          proj.x = ox + (proj.x - ox) * t;
-          proj.y = oy + (proj.y - oy) * t;
-          hitWall = true;
-          break;
+        if (t !== null && t < earliestT) {
+          earliestT = t;
+          hitBoxKey = undefined;
         }
       }
-      if (hitWall) {
+      this.state.boxes.forEach((b, key) => {
+        const t = segmentRectHit(ox, oy, proj.x, proj.y, { x: b.x, y: b.y, w: b.w, h: b.h }, proj.radius);
+        if (t !== null && t < earliestT) {
+          earliestT = t;
+          hitBoxKey = key;
+        }
+      });
+      if (earliestT < Infinity) {
+        proj.x = ox + (proj.x - ox) * earliestT;
+        proj.y = oy + (proj.y - oy) * earliestT;
+        if (hitBoxKey) this.damageBox(hitBoxKey, proj.damage, proj.kind);
         dead.push(id);
         return;
       }
@@ -602,6 +631,31 @@ export class MatchRoom extends Room<MatchState> {
     });
   }
 
+  /**
+   * Apply shot damage to a box. Boxes do NOT charge the shooter's super (only
+   * hitting enemies does). When a box's health runs out it breaks, dropping
+   * power cubes where it stood.
+   */
+  private damageBox(key: string, amount: number, kind: string) {
+    const box = this.state.boxes.get(key);
+    if (!box) return;
+    const cx = box.x + box.w / 2;
+    const cy = box.y + box.h / 2;
+    // A damage number on the box so you can see you're cracking it.
+    this.fx.push({ t: "hit", x: cx, y: cy, amount: Math.round(amount), kind, targetId: "" });
+
+    box.hp -= amount;
+    if (box.hp > 0) return;
+
+    // Broken: remove it and scatter its cubes around where it stood.
+    this.state.boxes.delete(key);
+    for (let i = 0; i < BOX_CUBES; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = i === 0 ? 0 : 18 + Math.random() * 14;
+      this.spawnCube(cx + Math.cos(a) * d, cy + Math.sin(a) * d);
+    }
+  }
+
   // =========================================================================
   //  Poison zone
   // =========================================================================
@@ -665,24 +719,65 @@ export class MatchRoom extends Room<MatchState> {
     this.state.cubes.set(String(this.nextId++), cube);
   }
 
+  private spawnBox(x: number, y: number) {
+    const box = new Box();
+    box.x = x; // top-left corner
+    box.y = y;
+    box.w = BOX_SIZE;
+    box.h = BOX_SIZE;
+    box.hp = BOX_HP;
+    box.maxHp = BOX_HP;
+    this.state.boxes.set(String(this.nextId++), box);
+  }
+
   /** True if (x, y) lies inside any wall, optionally padded outward. */
   private pointInAnyWall(x: number, y: number, pad = 0): boolean {
     return this.walls.some((w) => pointInRect(x, y, w, pad));
   }
 
-  /** A spot on the spawn ring that doesn't overlap a wall (best-effort). */
+  /** Do two axis-aligned rectangles overlap (with optional padding)? */
+  private aabbOverlap(a: Rect, b: Rect, pad = 0): boolean {
+    return (
+      a.x < b.x + b.w + pad &&
+      a.x + a.w + pad > b.x &&
+      a.y < b.y + b.h + pad &&
+      a.y + a.h + pad > b.y
+    );
+  }
+
+  /** A clear top-left spot for a box: off the edges, clear of walls + boxes. */
+  private findClearBoxSpot(): Vec2 | undefined {
+    const size = BOX_SIZE;
+    const margin = 150;
+    for (let i = 0; i < 60; i++) {
+      const x = margin + Math.random() * (this.state.width - 2 * margin - size);
+      const y = margin + Math.random() * (this.state.height - 2 * margin - size);
+      const rect: Rect = { x, y, w: size, h: size };
+      if (this.walls.some((w) => this.aabbOverlap(rect, w, 10))) continue;
+      let nearBox = false;
+      this.state.boxes.forEach((b) => {
+        if (this.aabbOverlap(rect, { x: b.x, y: b.y, w: b.w, h: b.h }, 28)) nearBox = true;
+      });
+      if (nearBox) continue;
+      return { x, y };
+    }
+    return undefined; // couldn't place this one cleanly — just skip it
+  }
+
+  /** A spot on the spawn ring clear of walls AND boxes (best-effort). */
   private findClearSpawn(r: number): Vec2 {
     const cx = this.state.width / 2;
     const cy = this.state.height / 2;
     const ring = Math.min(this.state.width, this.state.height) * 0.4;
+    const obstacles = this.obstacleRects();
     for (let i = 0; i < 48; i++) {
       const angle = Math.random() * Math.PI * 2;
       const rad = ring * (0.75 + Math.random() * 0.45);
       const x = clamp(cx + Math.cos(angle) * rad, r, this.state.width - r);
       const y = clamp(cy + Math.sin(angle) * rad, r, this.state.height - r);
-      if (!this.walls.some((w) => circleRectOverlap(x, y, r, w))) return { x, y };
+      if (!obstacles.some((w) => circleRectOverlap(x, y, r, w))) return { x, y };
     }
-    return { x: cx, y: cy }; // core is always wall-free (verified in docs)
+    return { x: cx, y: cy }; // core is always clear (verified in docs)
   }
 
   /** A cube spot inside the play area and clear of walls (best-effort). */
