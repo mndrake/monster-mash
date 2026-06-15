@@ -114,6 +114,17 @@ export const POISON_RAMP_DPS_PER_SEC = 14;
 //  Monsters — three distinct types, the heart of the brawler
 // ---------------------------------------------------------------------------
 
+/**
+ * One gadget: a cooldown-based active ability. Every monster has TWO; the player
+ * picks one (`Player.gadgetIndex`). The cooldown scales with how strong it is.
+ * The `id` is what `MatchRoom.useGadget` switches on to apply the effect.
+ */
+export interface GadgetDef {
+  id: string;
+  name: string;
+  cooldownMs: number;
+}
+
 /** Everything the simulation needs to know about one kind of monster. */
 export interface MonsterType {
   /** Stable id, also used by the client to pick the right look. */
@@ -150,6 +161,22 @@ export interface MonsterType {
   superCount: number;
   superSpreadDeg: number;
   superDashUnits: number; // forward lunge when the super fires (0 = none)
+
+  /**
+   * If > 0, this monster's super charges from damage TAKEN instead of dealt
+   * (Asher's "rage"): super += (damageTaken / maxHealth) * this. 0/undefined =
+   * the normal charge-on-hit (`superChargePerHit`).
+   */
+  superFromDamageTaken?: number;
+
+  /**
+   * If set, the super is a SELF speed-buff (Asher's "Enrage") instead of firing
+   * projectiles: it grants `mult`× move speed for `ms` milliseconds.
+   */
+  superSelfSpeed?: { mult: number; ms: number };
+
+  /** The monster's two gadgets (the player picks one). */
+  gadgets: [GadgetDef, GadgetDef];
 }
 
 /**
@@ -184,6 +211,10 @@ export const MONSTERS: MonsterType[] = [
     superCount: 3,
     superSpreadDeg: 60,
     superDashUnits: 300, // lunge forward on super
+    gadgets: [
+      { id: "dash", name: "Dash", cooldownMs: 6000 },
+      { id: "frenzy", name: "Frenzy", cooldownMs: 12000 },
+    ],
   },
   {
     id: "spit",
@@ -209,6 +240,10 @@ export const MONSTERS: MonsterType[] = [
     superCount: 5,
     superSpreadDeg: 52,
     superDashUnits: 0,
+    gadgets: [
+      { id: "reload", name: "Reload", cooldownMs: 9000 },
+      { id: "caltrops", name: "Caltrops", cooldownMs: 10000 },
+    ],
   },
   {
     id: "brute",
@@ -234,6 +269,10 @@ export const MONSTERS: MonsterType[] = [
     superCount: 1,
     superSpreadDeg: 0,
     superDashUnits: 0,
+    gadgets: [
+      { id: "shield", name: "Shield", cooldownMs: 11000 },
+      { id: "slam", name: "Slam", cooldownMs: 12000 },
+    ],
   },
   {
     // VEX — a long-range sniper. Fragile, slow to fire, but reaches across the
@@ -261,6 +300,10 @@ export const MONSTERS: MonsterType[] = [
     superCount: 1,
     superSpreadDeg: 0,
     superDashUnits: 0,
+    gadgets: [
+      { id: "reload", name: "Reload", cooldownMs: 9000 },
+      { id: "adrenaline", name: "Adrenaline", cooldownMs: 9000 },
+    ],
   },
   {
     // SPIKE — a close-range shotgun. A wide fan of pellets that shreds up close
@@ -288,6 +331,10 @@ export const MONSTERS: MonsterType[] = [
     superCount: 8,
     superSpreadDeg: 72,
     superDashUnits: 220, // lunge in, then blast
+    gadgets: [
+      { id: "thorns", name: "Thorns", cooldownMs: 9000 },
+      { id: "roll", name: "Roll", cooldownMs: 6000 },
+    ],
   },
   {
     // WISP — a fast skirmisher. The quickest monster with rapid, light shots and
@@ -315,6 +362,105 @@ export const MONSTERS: MonsterType[] = [
     superCount: 3,
     superSpreadDeg: 30,
     superDashUnits: 0,
+    gadgets: [
+      { id: "blink", name: "Blink", cooldownMs: 6000 },
+      { id: "haste", name: "Haste", cooldownMs: 9000 },
+    ],
+  },
+  {
+    // RUBY — a human biologist who fights with plants. Mid-range control + the
+    // only sustain kit (her gadgets heal / lock down), studying the monsters.
+    id: "ruby",
+    name: "Ruby",
+    accent: "#66bb6a",
+    maxHealth: 3600,
+    speed: 320,
+    radius: 20,
+    ammoMax: 3,
+    reloadMs: 1400,
+    attackCooldownMs: 320,
+    projectileSpeed: 760,
+    projectileRange: 560,
+    projectileRadius: 13,
+    projectileDamage: 720,
+    projectileCount: 1,
+    spreadDeg: 0,
+    superChargePerHit: 0.2,
+    superSpeed: 700,
+    superRange: 520,
+    superRadius: 16,
+    superDamage: 520,
+    superCount: 4, // a spreading seed burst
+    superSpreadDeg: 46,
+    superDashUnits: 0,
+    gadgets: [
+      { id: "bloom", name: "Bloom", cooldownMs: 13000 }, // heal-over-time burst (self)
+      { id: "thornburst", name: "Thornburst", cooldownMs: 10000 }, // ring of thorns + slow
+    ],
+  },
+  {
+    // ASHER — one-eyed, slug-bottomed, very slow; spits acid and RAGES when hurt.
+    // His super charges from damage TAKEN and is a speed frenzy, not a shot.
+    id: "asher",
+    name: "Asher",
+    accent: "#9ccc65",
+    maxHealth: 5200,
+    speed: 225, // slowest by design
+    radius: 24,
+    ammoMax: 3,
+    reloadMs: 1500,
+    attackCooldownMs: 360,
+    projectileSpeed: 640,
+    projectileRange: 430,
+    projectileRadius: 16,
+    projectileDamage: 820,
+    projectileCount: 1,
+    spreadDeg: 0,
+    superChargePerHit: 0, // he doesn't charge from landing hits…
+    superFromDamageTaken: 1.8, // …he charges by taking damage (~55% HP to fill)
+    superSelfSpeed: { mult: 1.95, ms: 4200 }, // ENRAGE: a burst of speed
+    superSpeed: 0,
+    superRange: 0,
+    superRadius: 0,
+    superDamage: 0,
+    superCount: 0,
+    superSpreadDeg: 0,
+    superDashUnits: 0,
+    gadgets: [
+      { id: "acidpuddle", name: "Acid Puddle", cooldownMs: 10000 }, // area slow + tick
+      { id: "caustic", name: "Caustic Shell", cooldownMs: 11000 }, // brief damage reduction
+    ],
+  },
+  {
+    // SAM — a grumpy human in his late 60s who wants the monsters QUIET. Sticky
+    // heavy chainsaw melee: tiny range, big damage, fast cadence; super charges in.
+    id: "sam",
+    name: "Sam",
+    accent: "#ff8a65",
+    maxHealth: 5000,
+    speed: 300,
+    radius: 23,
+    ammoMax: 3,
+    reloadMs: 1100,
+    attackCooldownMs: 220, // fast chainsaw slashes
+    projectileSpeed: 900,
+    projectileRange: 230, // very short — it's a chainsaw
+    projectileRadius: 24,
+    projectileDamage: 820,
+    projectileCount: 1,
+    spreadDeg: 0,
+    superChargePerHit: 0.3,
+    superSpeed: 1000,
+    superRange: 280,
+    superRadius: 30,
+    superDamage: 1600,
+    superCount: 1,
+    superSpreadDeg: 0,
+    superDashUnits: 320, // CHAINSAW CHARGE — lunge in shredding
+    gadgets: [
+      { id: "revup", name: "Rev Up", cooldownMs: 11000 }, // lifesteal + speed
+      { id: "oilslick", name: "Oil Slick", cooldownMs: 9000 }, // drop a slowing patch
+    ],
   },
 ];
 

@@ -19,6 +19,8 @@ export interface ControlEvents {
   onFire: (dir: Dir) => void;
   /** Use the super in the given direction. */
   onSuper: (dir: Dir) => void;
+  /** Use the chosen gadget in the given direction. */
+  onGadget: (dir: Dir) => void;
 }
 
 /** Touch device? (iPads report maxTouchPoints > 0.) */
@@ -45,6 +47,7 @@ export class Controls {
   private leftZone?: HTMLDivElement;
   private rightZone?: HTMLDivElement;
   private superButton: HTMLButtonElement;
+  private gadgetButton: HTMLButtonElement;
   private gameEl: HTMLElement;
 
   private joyX = 0;
@@ -101,6 +104,18 @@ export class Controls {
       ev.preventDefault();
       ev.stopPropagation();
       this.events.onSuper(this.lastAim);
+    });
+
+    // ---- GADGET button (below the super button) ----
+    this.gadgetButton = document.createElement("button");
+    this.gadgetButton.id = "gadget-btn";
+    this.gadgetButton.textContent = "GADGET";
+    this.gadgetButton.className = "gadget-btn";
+    gameEl.appendChild(this.gadgetButton);
+    this.gadgetButton.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this.events.onGadget(this.lastAim);
     });
 
     // No right-click menu over the play area (right-click = super on desktop).
@@ -227,11 +242,17 @@ export class Controls {
     this.superButton.classList.toggle("ready", ready);
   }
 
+  /** Let GameScene light up the Gadget button when it's off cooldown. */
+  setGadgetReady(ready: boolean): void {
+    this.gadgetButton.classList.toggle("ready", ready);
+  }
+
   /** Remove the joysticks + zones + button (called when leaving the game). */
   destroy(): void {
     this.moveStick?.destroy();
     this.aimStick?.destroy();
     this.superButton.remove();
+    this.gadgetButton.remove();
     this.leftZone?.remove();
     this.rightZone?.remove();
     document.getElementById("game")?.removeEventListener("contextmenu", this.blockContext);

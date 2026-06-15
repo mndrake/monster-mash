@@ -163,6 +163,15 @@ export class MatchRoom extends Room<MatchState> {
       p.superDirY = msg?.y ?? 0;
     });
 
+    // Use the chosen gadget (cooldown-based) toward (x, y).
+    this.onMessage("gadget", (client, msg: { x: number; y: number }) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p) return;
+      p.wantGadget = true;
+      p.gadgetDirX = msg?.x ?? 0;
+      p.gadgetDirY = msg?.y ?? 0;
+    });
+
     // Start the round from the waiting room. Host-only: only the player holding
     // hostId may start, and only from the LOBBY phase. (To let ANYONE start,
     // drop the `client.sessionId === this.state.hostId` check.)
@@ -274,6 +283,17 @@ export class MatchRoom extends Room<MatchState> {
     p.hidden = false;
     p.lastDamageAt = -100000;
     p.lastFireAt = -100000;
+    // Clear timed statuses and ready the gadget for the new round.
+    p.speedMult = 1;
+    p.speedMultUntil = 0;
+    p.shieldMult = 1;
+    p.shieldUntil = 0;
+    p.rootUntil = 0;
+    p.lifestealFrac = 0;
+    p.lifestealUntil = 0;
+    p.statusFx = "";
+    p.gadgetReadyAt = this.now;
+    p.gadgetCharge = 1;
     // Spawn around the rim (clear of walls) so monsters don't start stuck or on
     // top of each other.
     const cx = this.state.width / 2;
@@ -360,7 +380,8 @@ export class MatchRoom extends Room<MatchState> {
         dx /= len;
         dy /= len;
       }
-      this.moveWithWalls(p, dx * type.speed * dt, dy * type.speed * dt, type.radius);
+      const sf = this.speedFactor(p); // status effects (dash/rage/slow/root)
+      this.moveWithWalls(p, dx * type.speed * sf * dt, dy * type.speed * sf * dt, type.radius);
 
       // --- reload ammo over time ---
       if (p.ammo < type.ammoMax) {
@@ -395,6 +416,20 @@ export class MatchRoom extends Room<MatchState> {
         p.wantFire = false;
       }
 
+      // --- gadget (cooldown-based active) ---
+      if (p.wantGadget) {
+        if (this.now >= p.gadgetReadyAt) {
+          this.useGadget(p, type);
+          p.gadgetReadyAt = this.now + (type.gadgets[p.gadgetIndex]?.cooldownMs ?? 8000);
+        }
+        p.wantGadget = false;
+      }
+      // Gadget readiness for the HUD ring, and the active-status visual hint.
+      const gcd = type.gadgets[p.gadgetIndex]?.cooldownMs ?? 1;
+      p.gadgetCharge =
+        this.now >= p.gadgetReadyAt ? 1 : Math.max(0, 1 - (p.gadgetReadyAt - this.now) / gcd);
+      p.statusFx = this.computeStatusFx(p);
+
       // --- bush hiding: in a bush AND quiet (no firing / no damage) recently ---
       const inBush = this.bushes.some((b) => pointInRect(p.x, p.y, b));
       p.hidden =
@@ -402,6 +437,137 @@ export class MatchRoom extends Room<MatchState> {
         this.now - p.lastFireAt > BUSH_REVEAL_MS &&
         this.now - p.lastDamageAt > BUSH_REVEAL_MS;
     });
+  }
+
+  // =========================================================================
+  //  Status effects (timed buffs/debuffs) + gadgets
+  // =========================================================================
+
+  /** Current movement-speed multiplier from status effects (0 while rooted). */
+  private speedFactor(p: Player): number {
+    if (p.rootUntil > this.now) return 0;
+    return p.speedMultUntil > this.now ? p.speedMult : 1;
+  }
+
+  /** Incoming-damage multiplier from status effects (<1 while shielded). */
+  private incomingMult(p: Player): number {
+    return p.shieldUntil > this.now ? p.shieldMult : 1;
+  }
+
+  /** The visual status hint synced to clients (priority: root > shield > speed). */
+  private computeStatusFx(p: Player): string {
+    if (p.rootUntil > this.now) return "root";
+    if (p.shieldUntil > this.now) return "shield";
+    if (p.speedMultUntil > this.now) return p.speedMult >= 1 ? "rage" : "slow";
+    return "";
+  }
+
+  // --- status primitives -----------------------------------------------------
+  private speedBurst(p: Player, mult: number, ms: number) {
+    p.speedMult = mult;
+    p.speedMultUntil = this.now + ms;
+  }
+  private slow(p: Player, mult: number, ms: number) {
+    p.speedMult = mult;
+    p.speedMultUntil = this.now + ms;
+  }
+  private shieldFor(p: Player, mult: number, ms: number) {
+    p.shieldMult = mult;
+    p.shieldUntil = this.now + ms;
+  }
+  private lifestealFor(p: Player, frac: number, ms: number) {
+    p.lifestealFrac = frac;
+    p.lifestealUntil = this.now + ms;
+  }
+  private healPlayer(p: Player, amount: number) {
+    p.health = Math.min(p.maxHealth, p.health + amount);
+  }
+  /** Damage every living enemy within `radius` of `p`. */
+  private areaDamage(p: Player, radius: number, amount: number) {
+    const myKey = this.keyOf(p);
+    this.state.players.forEach((o, key) => {
+      if (key === myKey || !o.alive) return;
+      if (Math.hypot(o.x - p.x, o.y - p.y) <= radius) this.damagePlayer(o, amount, myKey);
+    });
+  }
+  /** Slow every living enemy within `radius` of `p`. */
+  private areaSlow(p: Player, radius: number, mult: number, ms: number) {
+    const myKey = this.keyOf(p);
+    this.state.players.forEach((o, key) => {
+      if (key === myKey || !o.alive) return;
+      if (Math.hypot(o.x - p.x, o.y - p.y) <= radius) this.slow(o, mult, ms);
+    });
+  }
+  /** Shove every living enemy within `radius` away from `p`. */
+  private knockback(p: Player, radius: number, force: number) {
+    const myKey = this.keyOf(p);
+    this.state.players.forEach((o, key) => {
+      if (key === myKey || !o.alive) return;
+      const dx = o.x - p.x;
+      const dy = o.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 0 && d <= radius) {
+        const t = monsterById(o.monster);
+        this.moveWithWalls(o, (dx / d) * force, (dy / d) * force, t.radius);
+      }
+    });
+  }
+
+  /** Apply the player's chosen gadget effect (called when it's off cooldown). */
+  private useGadget(p: Player, type: MonsterType) {
+    const id = type.gadgets[p.gadgetIndex]?.id ?? "";
+    switch (id) {
+      // movement bursts (dash / blink / roll / adrenaline / haste)
+      case "dash":
+      case "blink":
+      case "roll":
+        this.speedBurst(p, 2.2, 480);
+        break;
+      case "adrenaline":
+      case "haste":
+        this.speedBurst(p, 1.6, 2200);
+        break;
+      // sustain
+      case "frenzy":
+        this.lifestealFor(p, 0.5, 3000);
+        break;
+      case "revup":
+        this.lifestealFor(p, 0.6, 3000);
+        this.speedBurst(p, 1.35, 3000);
+        break;
+      case "bloom":
+        this.healPlayer(p, p.maxHealth * 0.4);
+        break;
+      // defense
+      case "shield":
+        this.shieldFor(p, 0.4, 2500);
+        break;
+      case "caustic":
+        this.shieldFor(p, 0.45, 2600);
+        break;
+      // ammo
+      case "reload":
+        p.ammo = type.ammoMax;
+        break;
+      // area control / burst
+      case "caltrops":
+      case "oilslick":
+        this.areaSlow(p, 210, 0.5, 2200);
+        break;
+      case "acidpuddle":
+        this.areaSlow(p, 180, 0.55, 2400);
+        this.areaDamage(p, 180, type.projectileDamage * 0.4);
+        break;
+      case "thorns":
+      case "thornburst":
+        this.areaSlow(p, 170, 0.6, 1500);
+        this.areaDamage(p, 170, type.projectileDamage * 0.7);
+        break;
+      case "slam":
+        this.areaDamage(p, 200, type.projectileDamage * 0.9);
+        this.knockback(p, 200, 120);
+        break;
+    }
   }
 
   /**
@@ -465,6 +631,13 @@ export class MatchRoom extends Room<MatchState> {
   }
 
   private fireSuper(p: Player, type: MonsterType) {
+    // Self-buff supers (Asher's Enrage) grant a speed burst instead of shooting.
+    if (type.superSelfSpeed) {
+      p.super = 0;
+      this.speedBurst(p, type.superSelfSpeed.mult, type.superSelfSpeed.ms);
+      return;
+    }
+
     const dir = this.resolveDirection(p, p.superDirX, p.superDirY);
     const angle = Math.atan2(dir.y, dir.x);
     p.facing = angle;
@@ -660,8 +833,33 @@ export class MatchRoom extends Room<MatchState> {
   /** Apply damage; handle defeat (drop cubes, award the kill, set placement). */
   private damagePlayer(target: Player, amount: number, attackerId: string) {
     if (!target.alive) return;
+
+    // A defensive status (Brute Shield / Asher's Caustic Shell) softens the hit.
+    amount *= this.incomingMult(target);
+
     target.health -= amount;
     target.lastDamageAt = this.now;
+
+    // Attacker lifesteal (Gnash Frenzy / Sam Rev Up): heal a fraction dealt.
+    const lifestealer = this.state.players.get(attackerId);
+    if (
+      lifestealer &&
+      lifestealer !== target &&
+      lifestealer.alive &&
+      lifestealer.lifestealUntil > this.now
+    ) {
+      this.healPlayer(lifestealer, amount * lifestealer.lifestealFrac);
+    }
+
+    // Asher rages: his super charges from damage TAKEN, not dealt.
+    const ttype = monsterById(target.monster);
+    if (ttype.superFromDamageTaken && target.maxHealth > 0) {
+      target.super = Math.min(
+        1,
+        target.super + (amount / target.maxHealth) * ttype.superFromDamageTaken,
+      );
+    }
+
     if (target.health > 0) return;
 
     // ---- defeated ----
@@ -889,6 +1087,7 @@ export class MatchRoom extends Room<MatchState> {
     (p as KeyedPlayer).__key = key;
     p.isBot = true;
     p.monster = MONSTERS[Math.floor(Math.random() * MONSTERS.length)].id;
+    p.gadgetIndex = Math.random() < 0.5 ? 0 : 1;
     p.name = BOT_NAMES[(this.botSeq - 1) % BOT_NAMES.length];
     p.color = PLAYER_COLORS[(this.state.players.size) % PLAYER_COLORS.length];
     this.respawn(p);
@@ -926,6 +1125,7 @@ export class MatchRoom extends Room<MatchState> {
       p.inputY = 0;
       p.wantFire = false;
       p.wantSuper = false;
+      p.wantGadget = false;
       p.fireDirX = 0; // 0 vector => fireMain auto-aims at the nearest enemy
       p.fireDirY = 0;
 
@@ -979,7 +1179,12 @@ export class MatchRoom extends Room<MatchState> {
 
         // Fire when in range and loaded; unleash the super a bit closer in.
         if (dist <= type.projectileRange && p.ammo >= 1) p.wantFire = true;
-        if (dist <= type.superRange * 0.9 && p.super >= 1) p.wantSuper = true;
+        // A self-speed super (Asher) is best off cooldown; others want a target close.
+        if (p.super >= 1 && (type.superSelfSpeed || dist <= type.superRange * 0.9))
+          p.wantSuper = true;
+        // Fire the gadget when it's ready and an enemy is within reach.
+        if (this.now >= p.gadgetReadyAt && dist <= type.projectileRange * 1.2)
+          p.wantGadget = true;
       } else {
         // 3) Nobody around: drift toward the center to find the action.
         const dx = cx - p.x;
@@ -993,7 +1198,7 @@ export class MatchRoom extends Room<MatchState> {
     });
   }
 
-  onJoin(client: Client, options: { name?: string; monster?: string }) {
+  onJoin(client: Client, options: { name?: string; monster?: string; gadget?: number }) {
     const p = new Player();
     (p as KeyedPlayer).__key = client.sessionId;
 
@@ -1002,6 +1207,8 @@ export class MatchRoom extends Room<MatchState> {
     p.monster = valid
       ? options!.monster!
       : MONSTERS[Math.floor(Math.random() * MONSTERS.length)].id;
+    // Chosen gadget (0 or 1); default to the first.
+    p.gadgetIndex = options?.gadget === 1 ? 1 : 0;
 
     p.name = (options?.name || "Monster").slice(0, 16);
     p.color = PLAYER_COLORS[(this.clients.length - 1) % PLAYER_COLORS.length];

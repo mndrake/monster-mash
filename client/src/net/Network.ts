@@ -31,6 +31,10 @@ export interface PlayerSnapshot {
   ammo: number;
   ammoMax: number;
   super: number;
+  /** Chosen gadget (0 or 1) and its readiness in [0,1]; status aura hint. */
+  gadgetIndex: number;
+  gadgetCharge: number;
+  statusFx: string;
   cubes: number;
   alive: boolean;
   /** Hidden in a bush — other clients dim them; the local client ignores this. */
@@ -157,16 +161,18 @@ export class Network {
     roomCode: string,
     name: string,
     monster: string,
+    gadget: number,
     events: NetEvents,
   ): Promise<void> {
+    const opts = { roomCode, name, monster, gadget };
     // Join, retrying once on failure. A stale/expired seat reservation (common
     // right after a cold start, when the WS lags behind the matchmaking HTTP)
     // throws here; a second joinOrCreate gets a fresh reservation.
     try {
-      this.room = await this.client.joinOrCreate(ROOM_NAME, { roomCode, name, monster });
+      this.room = await this.client.joinOrCreate(ROOM_NAME, opts);
     } catch {
       await new Promise((r) => setTimeout(r, 600));
-      this.room = await this.client.joinOrCreate(ROOM_NAME, { roomCode, name, monster });
+      this.room = await this.client.joinOrCreate(ROOM_NAME, opts);
     }
     this.selfId = this.room.sessionId;
 
@@ -225,6 +231,10 @@ export class Network {
   }
   sendSuper(x: number, y: number): void {
     this.room?.send("super", { x, y });
+  }
+  /** Use the chosen gadget (cooldown-based). */
+  sendGadget(x: number, y: number): void {
+    this.room?.send("gadget", { x, y });
   }
   /** Host-only on the server: start the round from the waiting room. */
   sendStart(): void {
@@ -292,7 +302,8 @@ function playerSnap(
   p: {
     x: number; y: number; name: string; color: string; monster: string;
     isBot: boolean; facing: number; health: number; maxHealth: number; ammo: number;
-    ammoMax: number; super: number; cubes: number; alive: boolean;
+    ammoMax: number; super: number; gadgetIndex: number; gadgetCharge: number;
+    statusFx: string; cubes: number; alive: boolean;
     hidden: boolean; rank: number; kills: number; wins: number; totalKills: number;
   },
 ): PlayerSnapshot {
@@ -310,6 +321,9 @@ function playerSnap(
     ammo: p.ammo,
     ammoMax: p.ammoMax,
     super: p.super,
+    gadgetIndex: p.gadgetIndex,
+    gadgetCharge: p.gadgetCharge,
+    statusFx: p.statusFx,
     cubes: p.cubes,
     alive: p.alive,
     hidden: p.hidden,

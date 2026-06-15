@@ -325,3 +325,63 @@ button.primary:active {
   0%, 100% { box-shadow: 0 0 16px 3px rgba(255, 200, 60, 0.55); }
   50% { box-shadow: 0 0 26px 8px rgba(255, 200, 60, 0.85); }
 }
+
+/* ---- Gadget button (below the Super button) ---- */
+.gadget-btn {
+  position: fixed;
+  right: 8%;
+  bottom: 30%;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 3px solid #4a4a6a;
+  background: rgba(40, 40, 70, 0.55);
+  color: #8a8ab0;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 1px;
+  z-index: 5;
+  cursor: pointer;
+  touch-action: none;
+  transition: transform 0.05s;
+}
+.gadget-btn:active {
+  transform: scale(0.93);
+}
+.gadget-btn.ready {
+  border-color: #59b0ff;
+  background: radial-gradient(circle at 50% 40%, #bfe3ff, #2e8bff);
+  color: #06122a;
+  box-shadow: 0 0 16px 3px rgba(70, 150, 255, 0.55);
+}
+
+/* ---- Lobby gadget chooser (pick 1 of 2) ---- */
+#gadget-pick {
+  margin: 12px 0 4px;
+}
+#gadget-pick .gp-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.6;
+  margin-bottom: 6px;
+}
+#gadget-pick .gp-row {
+  display: flex;
+  gap: 8px;
+}
+#gadget-pick .gp-btn {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #eaeaf2;
+  font: 600 14px/1 inherit;
+  cursor: pointer;
+}
+#gadget-pick .gp-btn.selected {
+  border-color: #5b8cff;
+  background: rgba(91, 140, 255, 0.25);
+  color: #fff;
+}

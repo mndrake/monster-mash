@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A private, browser-based 2D top-down brawler (monster-themed Brawl Stars clone) intended for LAN play with friends. PWA installable to a phone home screen.
 
-It's a continuous **Showdown** free-for-all: pick one of **six** monsters, drop into a shared arena, and survive the closing **poison** until you're the last standing. Power cubes (which raise your health + damage) come from **breakable boxes** and from kills. Static **terrain** matters — **walls** block movement *and* projectiles; **bushes** you walk through to hide. Players gather in a **waiting room** where the host starts each round; between rounds it returns there with a running session leaderboard.
+It's a continuous **Showdown** free-for-all: pick one of **nine** monsters (each with a chosen **gadget** — a cooldown-based active), drop into a shared arena, and survive the closing **poison** until you're the last standing. Power cubes (which raise your health + damage) come from **breakable boxes** and from kills. Static **terrain** matters — **walls** block movement *and* projectiles; **bushes** you walk through to hide. Players gather in a **waiting room** where the host starts each round; between rounds it returns there with a running session leaderboard.
 
 On top of the authoritative simulation there's a presentation/feel layer: bright procedural Brawl-Stars-style visuals (grassy field, 3D crate walls, gas-cloud poison), an on-character ammo/super HUD, an aim indicator, damage numbers, a kill feed, defeat/spawn FX, and synthesized sound effects + music (with a mute toggle). Your own monster is **client-side predicted** so it responds instantly. (Built up across milestones M1→M5; the per-milestone design notes live in `docs/`.)
 
@@ -46,7 +46,8 @@ The tick loop runs at `TICK_RATE = 30` Hz on the server, which also patches stat
 
 | If you want to change… | Edit… |
 | --- | --- |
-| Monster stats (all six), cube/poison/round/box tuning, tick rate | `server/src/config.ts` (`MONSTERS`, `CUBE_*`, `ZONE_*`/`POISON_*`, `BOX_*`, `TICK_RATE`) |
+| Monster stats (all nine) + their two **gadgets**, cube/poison/round/box tuning, tick rate | `server/src/config.ts` (`MONSTERS` incl. `gadgets`/`superFromDamageTaken`/`superSelfSpeed`, `CUBE_*`, `ZONE_*`/`POISON_*`, `BOX_*`, `TICK_RATE`) |
+| Gadget effects + timed status system (speed/shield/slow/root/lifesteal) | `server/src/rooms/MatchRoom.ts` (`useGadget`, `speedFactor`/`incomingMult`, the status primitives); HUD button in `client/src/input/Controls.ts` + chooser in `client/src/main.ts` |
 | Map layouts (wall/bush rectangles, cube anchors), bush-reveal timing | `server/src/config.ts` (`MAPS`, `DEFAULT_MAP_ID`, `BUSH_REVEAL_MS`) **and** the mirror in `client/src/game/maps.ts` |
 | Collision math (circle-vs-AABB move/slide, segment-vs-AABB sweep) | `server/src/geom.ts` (pure, covered by `server/src/geom.test.ts`) — mirrored client-side in `client/src/game/collision.ts` for prediction |
 | Match simulation (movement, shots, damage, cubes, poison, phases, walls, bush-hiding, breakable boxes) | `server/src/rooms/MatchRoom.ts` |

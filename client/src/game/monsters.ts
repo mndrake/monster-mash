@@ -25,6 +25,8 @@ export interface MonsterLook {
   health: number;
   /** Effective burst damage (per-pellet × pellets) — DISPLAY ONLY, for the picker. */
   damage: number;
+  /** The two gadget names (mirrors server `gadgets`) — for the lobby chooser. */
+  gadgets: [string, string];
 }
 
 export const MONSTER_LOOKS: Record<string, MonsterLook> = {
@@ -39,6 +41,7 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     speed: 360,
     health: 4400,
     damage: 920,
+    gadgets: ["Dash", "Frenzy"],
   },
   spit: {
     id: "spit",
@@ -51,6 +54,7 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     speed: 320,
     health: 3000,
     damage: 760,
+    gadgets: ["Reload", "Caltrops"],
   },
   brute: {
     id: "brute",
@@ -63,6 +67,7 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     speed: 250,
     health: 6200,
     damage: 1320,
+    gadgets: ["Shield", "Slam"],
   },
   vex: {
     id: "vex",
@@ -75,6 +80,7 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     speed: 300,
     health: 2800,
     damage: 1120,
+    gadgets: ["Reload", "Adrenaline"],
   },
   spike: {
     id: "spike",
@@ -87,6 +93,7 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     speed: 300,
     health: 4800,
     damage: 1800,
+    gadgets: ["Thorns", "Roll"],
   },
   wisp: {
     id: "wisp",
@@ -99,11 +106,61 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     speed: 380,
     health: 3200,
     damage: 480,
+    gadgets: ["Blink", "Haste"],
+  },
+  ruby: {
+    id: "ruby",
+    name: "Ruby",
+    emoji: "🌿",
+    radius: 20,
+    accent: "#66bb6a",
+    blurb: "Plant biologist. Mid-range control — heals and tangles up foes.",
+    range: 560,
+    speed: 320,
+    health: 3600,
+    damage: 720,
+    gadgets: ["Bloom", "Thornburst"],
+  },
+  asher: {
+    id: "asher",
+    name: "Asher",
+    emoji: "🐌",
+    radius: 24,
+    accent: "#9ccc65",
+    blurb: "Slow acid slug. Rages when hurt — his super is a speed frenzy.",
+    range: 430,
+    speed: 225,
+    health: 5200,
+    damage: 820,
+    gadgets: ["Acid Puddle", "Caustic Shell"],
+  },
+  sam: {
+    id: "sam",
+    name: "Sam",
+    emoji: "👴",
+    radius: 23,
+    accent: "#ff8a65",
+    blurb: "Grumpy chainsaw bruiser. Tiny range, big bite; charges in on super.",
+    range: 230,
+    speed: 300,
+    health: 5000,
+    damage: 820,
+    gadgets: ["Rev Up", "Oil Slick"],
   },
 };
 
 /** The order monsters appear in the lobby picker. */
-export const MONSTER_ORDER = ["gnash", "spit", "brute", "vex", "spike", "wisp"];
+export const MONSTER_ORDER = [
+  "gnash",
+  "spit",
+  "brute",
+  "vex",
+  "spike",
+  "wisp",
+  "ruby",
+  "asher",
+  "sam",
+];
 
 export function lookOf(id: string): MonsterLook {
   return MONSTER_LOOKS[id] ?? MONSTER_LOOKS.gnash;

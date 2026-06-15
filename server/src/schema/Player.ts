@@ -31,6 +31,16 @@ export class Player extends Schema {
   @type("number") ammoMax = 3;
   /** Super meter in [0, 1]; 1 means the super is ready to fire. */
   @type("number") super = 0;
+  /** Which of the monster's two gadgets this player chose (0 or 1). */
+  @type("number") gadgetIndex = 0;
+  /** Gadget readiness in [0, 1]; 1 means the gadget is off cooldown. */
+  @type("number") gadgetCharge = 0;
+  /**
+   * Active status effect, for the client to show an aura/tint:
+   * "" | "shield" | "rage" | "heal" | "slow" | "root". Gameplay truth lives in
+   * the server-only timers below; this is just the visual hint.
+   */
+  @type("string") statusFx = "";
   /** Power cubes collected this round (raises health + damage). */
   @type("number") cubes = 0;
   /** False once defeated — the client draws them as a faded ghost / spectator. */
@@ -67,11 +77,29 @@ export class Player extends Schema {
   /** Pending action requests, consumed by the tick. */
   wantFire = false;
   wantSuper = false;
+  wantGadget = false;
   fireDirX = 0;
   fireDirY = 0;
   superDirX = 0;
   superDirY = 0;
+  gadgetDirX = 0;
+  gadgetDirY = 0;
   /** Timestamps (server clock, ms) used for cadence + regen. */
   lastFireAt = -100000;
   lastDamageAt = -100000;
+
+  // ---- gadget cooldown + timed status effects (server-only) ----
+  /** Server clock (ms) at which the gadget becomes usable again. */
+  gadgetReadyAt = 0;
+  /** Movement-speed multiplier while `speedMultUntil` is in the future. */
+  speedMult = 1;
+  speedMultUntil = 0;
+  /** Incoming-damage multiplier while `shieldUntil` is in the future (<1 = shield). */
+  shieldMult = 1;
+  shieldUntil = 0;
+  /** Can't move while `rootUntil` is in the future. */
+  rootUntil = 0;
+  /** Heal this fraction of damage dealt while `lifestealUntil` is in the future. */
+  lifestealFrac = 0;
+  lifestealUntil = 0;
 }

@@ -170,6 +170,18 @@ export class PlayerView {
       this.body.setStrokeStyle(this.isLocal ? 4 : 3, this.colorNum, 1);
     }
 
+    // Active status effect (gadget/super): recolor the ring as a tell.
+    // shield=blue, rage=orange, slow=cyan, heal=green, root=purple.
+    const statusColors: Record<string, number> = {
+      shield: 0x59b0ff,
+      rage: 0xff7043,
+      slow: 0x80deea,
+      heal: 0x66bb6a,
+      root: 0xab47bc,
+    };
+    const sc = player.alive ? statusColors[player.statusFx] : undefined;
+    if (sc !== undefined) this.body.setStrokeStyle(this.isLocal ? 5 : 4, sc, 1);
+
     // Defeated monsters fade to a faint ghost and hide their health bar.
     const dead = !player.alive;
     // A remote monster hidden in a bush nearly vanishes (ambush). We never hide

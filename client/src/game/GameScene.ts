@@ -34,6 +34,8 @@ interface SceneData {
   roomCode: string;
   name: string;
   monster: string;
+  /** Chosen gadget index (0 or 1). */
+  gadget: number;
 }
 
 /**
@@ -147,8 +149,10 @@ export class GameScene extends Phaser.Scene {
   private lastMouseAimSent = 0;
   private lastFireAt = 0;
   private superKey!: Phaser.Input.Keyboard.Key;
+  private gadgetKey!: Phaser.Input.Keyboard.Key;
   private prevRightDown = false;
   private prevSpaceDown = false;
+  private prevGadgetKey = false;
 
   constructor() {
     super("GameScene");
@@ -179,6 +183,7 @@ export class GameScene extends Phaser.Scene {
       onAim: (d) => this.aliveSelf() && this.net.sendAim(d.x, d.y),
       onFire: (d) => this.aliveSelf() && this.net.sendFire(d.x, d.y),
       onSuper: (d) => this.aliveSelf() && this.net.sendSuper(d.x, d.y),
+      onGadget: (d) => this.aliveSelf() && this.net.sendGadget(d.x, d.y),
     });
 
     // Refit the camera zoom when the canvas resizes (phone rotation, window
@@ -186,6 +191,7 @@ export class GameScene extends Phaser.Scene {
     this.scale.on("resize", this.applyZoom, this);
 
     this.superKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    this.gadgetKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
     this.input.on("pointermove", (p: Phaser.Input.Pointer) => {
       if (!p.wasTouch) this.mouseMoved = true;
     });
@@ -254,7 +260,7 @@ export class GameScene extends Phaser.Scene {
     // Connect and hook the server's state up to our render callbacks.
     this.net = new Network();
     this.net
-      .join(data.roomCode, data.name, data.monster, {
+      .join(data.roomCode, data.name, data.monster, data.gadget, {
         onJoin: (w, h, mapId) => {
           this.onConnected();
           this.setupArena(w, h, mapId);
@@ -864,6 +870,11 @@ export class GameScene extends Phaser.Scene {
     const spaceDown = this.superKey.isDown;
     if (spaceDown && !this.prevSpaceDown) this.net.sendSuper(dir.x, dir.y);
     this.prevSpaceDown = spaceDown;
+
+    // Q triggers the gadget (most gadgets ignore direction).
+    const qDown = this.gadgetKey.isDown;
+    if (qDown && !this.prevGadgetKey) this.net.sendGadget(dir.x, dir.y);
+    this.prevGadgetKey = qDown;
   }
 
   /**
@@ -1007,6 +1018,7 @@ export class GameScene extends Phaser.Scene {
 
     // ---- Super button glow ----
     this.controls.setSuperReady((me?.alive ?? false) && (me?.super ?? 0) >= 1);
+    this.controls.setGadgetReady((me?.alive ?? false) && (me?.gadgetCharge ?? 0) >= 1);
 
     // ---- centered banner ----
     const cam = this.cameras.main;

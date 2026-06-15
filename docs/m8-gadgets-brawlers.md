@@ -1,6 +1,8 @@
 # M8 — Gadgets, three new brawlers, and bot customization
 
-> **Status: PLANNED.** Second slice of the arc (after M7 bots). Adds the
+> **Status: PR-A + PR-B SHIPPED** (gadget system + 2 gadgets per brawler;
+> Ruby/Asher/Sam). PR-C (bot customization) and PR-D (voice lines) still planned.
+> Second slice of the arc (after M7 bots). Adds the
 > defining Brawl-Stars depth layer — **gadgets (2 per brawler, pick 1 of 2)** —
 > plus **Ruby, Asher, Sam**, **5–10 voice lines per brawler**, and **bot
 > customization** (what they play + how hard). **No star powers** (per request).

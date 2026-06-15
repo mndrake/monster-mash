@@ -87,11 +87,38 @@ MONSTER_ORDER.forEach((id) => {
   card.addEventListener("click", () => selectMonster(id));
   monstersEl.appendChild(card);
 });
+
+// ---- Gadget chooser: pick 1 of the selected monster's 2 gadgets ----
+let chosenGadget = 0;
+const gadgetWrap = document.createElement("div");
+gadgetWrap.id = "gadget-pick";
+monstersEl.insertAdjacentElement("afterend", gadgetWrap);
+function renderGadgets(id: string) {
+  const g = lookOf(id).gadgets;
+  gadgetWrap.innerHTML =
+    `<div class="gp-label">Gadget</div><div class="gp-row">` +
+    g
+      .map(
+        (name, i) =>
+          `<button type="button" class="gp-btn${i === chosenGadget ? " selected" : ""}" data-i="${i}">${name}</button>`,
+      )
+      .join("") +
+    `</div>`;
+  gadgetWrap.querySelectorAll(".gp-btn").forEach((b) =>
+    b.addEventListener("click", () => {
+      chosenGadget = Number((b as HTMLElement).dataset.i);
+      renderGadgets(id);
+    }),
+  );
+}
+
 function selectMonster(id: string) {
   chosenMonster = id;
+  chosenGadget = 0; // default to the first gadget when switching monster
   monstersEl.querySelectorAll(".monster-card").forEach((c) => {
     c.classList.toggle("selected", (c as HTMLElement).dataset.id === id);
   });
+  renderGadgets(id);
 }
 selectMonster(chosenMonster);
 
@@ -141,5 +168,10 @@ function startGame() {
   });
 
   // Start the scene and pass the chosen room code + name + monster into create().
-  game.scene.add("GameScene", GameScene, true, { roomCode, name, monster: chosenMonster });
+  game.scene.add("GameScene", GameScene, true, {
+    roomCode,
+    name,
+    monster: chosenMonster,
+    gadget: chosenGadget,
+  });
 }
