@@ -101,6 +101,8 @@ export class GameScene extends Phaser.Scene {
   private connectTimer?: number;
   /** The sound on/off button (DOM, top-right). */
   private muteBtn?: HTMLButtonElement;
+  /** Document-level handler that resumes audio on the first user gesture. */
+  private audioUnlock?: () => void;
 
   // Movement: only send when it actually changes.
   private lastMoveX = 0;
@@ -137,9 +139,16 @@ export class GameScene extends Phaser.Scene {
       if (!p.wasTouch) this.mouseMoved = true;
     });
 
-    // Browsers start audio suspended until a user gesture — unlock on first input.
-    this.input.once("pointerdown", () => this.sfx.resume());
-    this.input.keyboard!.once("keydown", () => this.sfx.resume());
+    // Browsers start audio SUSPENDED until a user gesture. We can't rely on
+    // Phaser's canvas input here: on touch, the nipplejs joystick zones are DOM
+    // overlays ABOVE the canvas, so the canvas never sees the touch and audio
+    // would stay muted forever. Listen at the document in the CAPTURE phase so
+    // ANY gesture (joystick touch, button tap, key) unlocks it. resume() is
+    // idempotent, so leaving these attached is harmless.
+    this.audioUnlock = () => this.sfx.resume();
+    for (const ev of ["pointerdown", "touchstart", "mousedown", "keydown"]) {
+      document.addEventListener(ev, this.audioUnlock, { capture: true, passive: true });
+    }
 
     // Sound on/off (persisted). A small button for touch, plus the M key.
     this.sfx.setEnabled(localStorage.getItem("mm-muted") !== "1");
@@ -221,6 +230,11 @@ export class GameScene extends Phaser.Scene {
       this.net.leave();
       this.sfx.close();
       this.muteBtn?.remove();
+      if (this.audioUnlock) {
+        for (const ev of ["pointerdown", "touchstart", "mousedown", "keydown"]) {
+          document.removeEventListener(ev, this.audioUnlock, { capture: true });
+        }
+      }
     });
   }
 
