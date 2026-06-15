@@ -3,6 +3,7 @@ import "./style.css";
 import { GameScene } from "./game/GameScene";
 import { randomRoomCode } from "./util/roomCode";
 import { MONSTER_ORDER, lookOf } from "./game/monsters";
+import { setupPwaUpdates } from "./pwa";
 
 /**
  * App entry point. This wires up the plain-HTML lobby and, once you join,
@@ -38,6 +39,10 @@ function disablePageZoom() {
   );
 }
 disablePageZoom();
+
+// Show a "new version available" banner when a fresh deploy is waiting, so
+// updates never get stuck behind a stale service worker (see client/src/pwa.ts).
+setupPwaUpdates();
 
 const lobby = document.getElementById("lobby")!;
 const nameInput = document.getElementById("name") as HTMLInputElement;

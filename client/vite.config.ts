@@ -15,9 +15,14 @@ export default defineConfig({
   plugins: [
     // Turns the site into an installable PWA: generates the web app manifest
     // and a minimal service worker that caches the built assets for offline /
-    // home-screen use. "autoUpdate" quietly refreshes the cache on new builds.
+    // home-screen use.
     VitePWA({
-      registerType: "autoUpdate",
+      // "prompt" (not "autoUpdate"): when a new deploy is detected we DON'T
+      // silently swap the cache — we surface a "new version" banner and only
+      // activate the update when the player taps it (see client/src/pwa.ts).
+      // autoUpdate left stale builds stuck behind the old service worker until
+      // every tab closed; prompt makes the refresh explicit and reliable.
+      registerType: "prompt",
       includeAssets: ["icons/icon-192.png", "icons/icon-512.png"],
       manifest: {
         name: "Monster Mash",
