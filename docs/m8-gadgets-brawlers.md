@@ -1,8 +1,10 @@
 # M8 — Gadgets, three new brawlers, and bot customization
 
 > **Status: PR-A + PR-B SHIPPED** (gadget system + 2 gadgets per brawler;
-> Ruby/Asher/Sam). PR-C (bot customization) and PR-D (voice lines) still planned.
-> Second slice of the arc (after M7 bots). Adds the
+> Ruby/Asher/Sam). Still planned: PR-C (bot customization), PR-D (voice lines),
+> and the visual pass — **PR-E gadget descriptions + icons**, **PR-F
+> individualized projectiles**, **PR-G player animation**. Second slice of the
+> arc (after M7 bots). Adds the
 > defining Brawl-Stars depth layer — **gadgets (2 per brawler, pick 1 of 2)** —
 > plus **Ruby, Asher, Sam**, **5–10 voice lines per brawler**, and **bot
 > customization** (what they play + how hard). **No star powers** (per request).
@@ -29,8 +31,8 @@ Per your spec: **every brawler has exactly 2 gadgets**, and the player **picks 1
 of the 2** to take into a match. Each gadget has a **cooldown scaled to its
 power** (stronger → longer). No star powers.
 
-- **Config:** `MonsterType.gadgets = [ { id, name, cooldownMs, … }, { … } ]` (an
-  array of two).
+- **Config:** `MonsterType.gadgets = [ { id, name, cooldownMs, desc, … }, { … } ]`
+  (an array of two; `desc` + icon image added in **PR-E**).
 - **Selection:** the chosen gadget index is sent at join (alongside `monster`),
   defaulting to gadget 0. The **polished chooser** ships with the M9 select
   screen; M8 ships **both gadget definitions per brawler** + a minimal pick in
@@ -70,6 +72,84 @@ Add `MonsterType.superFromDamageTaken` (charge per HP lost) and credit it in
 `damagePlayer` on the victim. His "Enrage" is a self-buff (speed mult via the
 PR-A status layer), not a projectile.
 
+## Visual identity (PR-E / PR-F / PR-G)
+These three are the "make it look like a real game, not circles" pass. Like the
+voice lines, the image assets are a **deliberate, scoped exception** to the
+zero-asset rule — generated with the **pollinations MCP image tools**
+(`generateImage`/`generateImageBatch`) in one consistent bright cartoon style,
+baked to files under `client/public/...`, then loaded by Phaser. (This is the art
+direction previously deferred to M9, now confirmed by these requests.)
+
+### PR-E — Gadget descriptions + icons
+PR-A shipped gadgets with just a `name`. Add a one-line **description** and an
+**icon image** to each, shown in the lobby chooser and as the in-game GADGET
+button face.
+
+- **Data:** extend `GadgetDef` with `desc: string` (and the client `MonsterLook`
+  gadget entries with the same). Icons live at
+  `client/public/gadgets/<id>.png` (one per gadget id; ids are shared across
+  monsters that reuse a gadget, e.g. `reload`).
+- **UI:** the lobby `#gadget-pick` buttons show icon + name + description; the
+  `Controls` GADGET button shows the icon (cooldown ring overlaid).
+
+| Brawler | Gadget | CD | Description |
+| --- | --- | --- | --- |
+| Gnash | Dash | 6s | Burst forward with a quick speed boost to close or escape. |
+| Gnash | Frenzy | 12s | Your bites heal you (lifesteal) for a few seconds. |
+| Spit | Reload | 9s | Instantly refill all ammo. |
+| Spit | Caltrops | 10s | Scatter spikes that slow nearby enemies. |
+| Brute | Shield | 11s | Brace: take greatly reduced damage for ~2.5s. |
+| Brute | Slam | 12s | Pound the ground — damage + knock back nearby enemies. |
+| Vex | Reload | 9s | Instantly refill all ammo. |
+| Vex | Adrenaline | 9s | A surge of speed to reposition the sniper. |
+| Spike | Thorns | 9s | Erupt a ring of thorns — damage + slow nearby enemies. |
+| Spike | Roll | 6s | Evasive roll: a quick burst of speed. |
+| Wisp | Blink | 6s | Dash a short distance almost instantly. |
+| Wisp | Haste | 9s | Sustained speed boost for hit-and-run. |
+| Ruby | Bloom | 13s | Sprout a plant that heals you over a moment. |
+| Ruby | Thornburst | 10s | Lash vines around you — slow + hurt nearby foes. |
+| Asher | Acid Puddle | 10s | Spew acid underfoot — slow + burn nearby enemies. |
+| Asher | Caustic Shell | 11s | Harden your shell to briefly reduce incoming damage. |
+| Sam | Rev Up | 11s | Rev the chainsaw: gain lifesteal and a speed boost. |
+| Sam | Oil Slick | 9s | Drop a slick that slows anyone who steps in it. |
+
+### PR-F — Individualized projectiles
+Today every shot is a colored circle. Give each brawler a **themed projectile**
+that reads at a glance.
+
+- **Plumbing:** the shooter's identity needs to reach the client. Add a synced
+  `skin` (or `ownerMonster`) field to the `Projectile` schema, set on spawn;
+  `ProjectileView` picks the visual from it (and `kind` for main vs super).
+- **Two render options** (pick per-projectile, mix freely): **procedural shapes**
+  (a leaf, a droplet, a boulder — drawn in code, zero-asset, lowest risk) or a
+  small **generated sprite** (`client/public/proj/<skin>.png`) for the hero look.
+  Recommend procedural first, sprites where it adds the most.
+
+| Brawler | Projectile theme |
+| --- | --- |
+| Ruby | **Plants** — a spinning leaf / thorny seed (super: a vine burst) |
+| Asher | Green acid droplet with a splatter trail |
+| Sam | Chainsaw tooth / spark shard |
+| Gnash | Snapping fang / bite |
+| Spit | Blue slime glob |
+| Brute | Brown boulder |
+| Vex | Thin bright sniper bolt |
+| Spike | Orange spike/pellet fan |
+| Wisp | Glowing wisp mote |
+
+### PR-G — Player animation
+Replace the static "emoji on a circle" with **animated bodies** so monsters feel
+alive.
+
+- **Stage 1 — procedural (zero-asset, do first):** in `PlayerView`, add
+  squash-&-stretch + a bob while moving, lean into the movement direction, a
+  recoil/lunge on attack and a pop on super, and a hurt shake. Big juice gain for
+  no assets; lowest risk.
+- **Stage 2 — generated sprite frames (bigger lift):** per-brawler frames
+  (idle / walk / attack) generated via the image tools into
+  `client/public/brawlers/<id>/`, played as Phaser animations, replacing the
+  emoji body. The colored ring/HUD stays. Heaviest item — may slip to M9.
+
 ## Voice lines (5–10 per brawler)
 **Every character gets 5–10 voice lines** (min 5, max 10), played on game moments
 for Brawl-Stars personality.
@@ -106,24 +186,31 @@ wording there before generating audio.
   line-of-sight check) — addresses the M7 wall-blindness deferral.
 
 ## PR breakdown (build order)
-- **PR-A — Status-effect layer + gadget system** (the enabler). Statuses on
-  `Player`; `"gadget"` message + cooldown + HUD + second action button; **two
-  gadgets per existing monster** + a minimal pick-1-of-2 at join; bots use
-  gadgets. *Effort: L.*
-- **PR-B — Ruby, Asher, Sam.** Stats, looks, main/super, **two gadgets each**;
-  Asher's damage-taken super charge + Enrage self-buff (uses PR-A). *Effort: M.*
+- **PR-A — Status-effect layer + gadget system** (the enabler). ✅ SHIPPED.
+- **PR-B — Ruby, Asher, Sam.** ✅ SHIPPED.
 - **PR-C — Bot customization.** `addBot` options, difficulty-scaled AI, waiting-
   room monster/level controls, LOS fix. *Effort: M.*
-- **PR-D — Voice lines.** 5–10 per brawler (all nine + the new three): write the
-  lines, generate audio via pollinations TTS, wire playback in `Sfx.ts` off the
-  existing signals, respect mute. *Effort: M.*
+- **PR-D — Voice lines.** 5–10 per brawler (all nine): write the lines, generate
+  audio via pollinations TTS, wire playback in `Sfx.ts` off the existing signals,
+  respect mute. *Effort: M.*
+- **PR-E — Gadget descriptions + icons.** Add `desc` + generated icon image to
+  every gadget; show in the lobby chooser and the GADGET button. *Effort: S–M.*
+- **PR-F — Individualized projectiles.** Themed per-brawler shots (Ruby = plants,
+  etc.); add a `skin` to the `Projectile` schema, render per skin/kind in
+  `ProjectileView` (procedural first, optional generated sprites). *Effort: M.*
+- **PR-G — Player animation.** Procedural squash/stretch/lean/recoil first
+  (zero-asset), then optional generated walk/attack sprite frames. *Effort: M
+  (procedural) → L (sprites).*
 
-A → B → C → D: PR-A is the foundation B/C build on; D can land last (or in
-parallel once the brawler roster from B is final). Each PR ships through the gate.
+Order: C and D are independent of the visual PRs. E is a quick follow-on to the
+shipped gadget system. F and G are the bigger visual lift (G's sprite stage may
+slip to M9). Each PR ships through the gate.
 
 ## Out of scope (later milestones)
-- The **polished 3D-style select screen** (AI-art portraits + custom icons) with
-  the full **choose-1-of-2-gadgets** UI → **M9** (needs art direction). M8 still
-  defines both gadgets per brawler and a minimal chooser.
+- The **polished 3D-style select screen** (AI-art portraits) with the full
+  **choose-1-of-2-gadgets** UI → **M9**. (Art direction is now confirmed —
+  generated bright-cartoon assets — so PR-E/F/G can start using it.)
 - **Star powers** — deferred indefinitely per request.
 - Duo Showdown / Monster Ball → **M10 / M11**.
+- Shareable **room-code-in-URL** links → its own small plan,
+  `docs/shareable-room-links.md` (independent of M8).
