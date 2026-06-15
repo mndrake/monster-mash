@@ -19,8 +19,8 @@ import {
   SERVER_URL,
   CONNECT_TIMEOUT_MS,
 } from "../config";
-import { lookOf } from "./monsters";
 import { mapById } from "./maps";
+import { lookOf } from "./monsters";
 
 /** Data passed in when we start this scene from the lobby. */
 interface SceneData {
@@ -82,6 +82,8 @@ export class GameScene extends Phaser.Scene {
   private hud!: Phaser.GameObjects.Text;
   private banner!: Phaser.GameObjects.Text;
   private poison!: Phaser.GameObjects.Graphics;
+  /** The local player's aim indicator (a dotted line along their facing). */
+  private aimLine!: Phaser.GameObjects.Graphics;
 
   // A DOM overlay shown while connecting (robust on mobile, no canvas needed).
   private statusEl?: HTMLElement;
@@ -124,6 +126,8 @@ export class GameScene extends Phaser.Scene {
 
     // Above the floor/grid, below the monsters — a tinted hazard on the ground.
     this.poison = this.add.graphics().setDepth(-5);
+    // Aim indicator sits on the ground (above the floor, below the monsters).
+    this.aimLine = this.add.graphics().setDepth(0);
 
     this.hud = this.add
       .text(12, 12, "", {
@@ -508,6 +512,7 @@ export class GameScene extends Phaser.Scene {
     this.projectiles.forEach((v) => v.interpolate(PROJECTILE_SMOOTHING));
     this.cubes.forEach((v) => v.bob(dt));
 
+    this.drawAim();
     this.drawPoison();
     this.updateHud();
   }
@@ -566,6 +571,44 @@ export class GameScene extends Phaser.Scene {
     this.prevSpaceDown = spaceDown;
   }
 
+  /**
+   * Draw the local player's aim indicator: a dotted line from the monster along
+   * its facing, as long as the weapon's range, ending in a small reticle. It
+   * turns red when you're out of ammo (can't fire) — mirrors Brawl Stars. Shown
+   * while you're actively aiming (touch) or whenever the mouse is in play.
+   */
+  private drawAim() {
+    this.aimLine.clear();
+    const me = this.players.get(this.net.selfId);
+    const self = this.net.self;
+    const playing = this.net.match?.phase === "playing";
+    if (!me || !self || !self.alive || !playing) return;
+    if (!(this.controls.isAiming() || this.mouseMoved)) return;
+
+    const range = lookOf(self.monster).range;
+    const f = self.facing;
+    const bx = me.body.x;
+    const by = me.body.y;
+    const canFire = self.ammo >= 1;
+    const color = canFire ? 0xffffff : 0xff5252;
+
+    // Start a little outside the body so the line doesn't sit under the monster.
+    const start = 28;
+    const dashes = 14;
+    this.aimLine.lineStyle(3, color, 0.5);
+    for (let i = 0; i < dashes; i++) {
+      const d0 = start + ((range - start) * i) / dashes;
+      const d1 = start + ((range - start) * (i + 0.55)) / dashes;
+      this.aimLine.beginPath();
+      this.aimLine.moveTo(bx + Math.cos(f) * d0, by + Math.sin(f) * d0);
+      this.aimLine.lineTo(bx + Math.cos(f) * d1, by + Math.sin(f) * d1);
+      this.aimLine.strokePath();
+    }
+    // Reticle at the far end of the range.
+    this.aimLine.lineStyle(2, color, 0.85);
+    this.aimLine.strokeCircle(bx + Math.cos(f) * range, by + Math.sin(f) * range, 7);
+  }
+
   /** Paint the poison region (everything outside the shrinking safe rectangle). */
   private drawPoison() {
     const m = this.net.match;
@@ -613,15 +656,10 @@ export class GameScene extends Phaser.Scene {
     // ---- HUD ----
     this.placeUi(this.hud, 12, 12);
     if (m) {
+      // HP, ammo, and super now live on the monster itself (health bar + the
+      // on-character ring/pips), so the corner only carries match + score info.
       const lines = [`Room ${this.roomCode}   ·   ${m.aliveCount} left`];
-      if (me) {
-        const ammo = "●".repeat(Math.floor(me.ammo)) + "○".repeat(Math.max(0, me.ammoMax - Math.floor(me.ammo)));
-        const sup = Math.round(me.super * 100);
-        lines.push(
-          `${lookOf(me.monster).name}  HP ${Math.ceil(me.health)}/${me.maxHealth}`,
-          `Ammo ${ammo}   Super ${me.super >= 1 ? "READY" : sup + "%"}   Cubes ${me.cubes}   Kills ${me.kills}`,
-        );
-      }
+      if (me) lines.push(`Cubes ${me.cubes}   ·   Kills ${me.kills}`);
       this.hud.setText(lines.join("\n"));
     }
 

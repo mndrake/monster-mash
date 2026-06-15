@@ -16,6 +16,13 @@ export interface MonsterLook {
   accent: string;
   /** One-line description for the lobby picker. */
   blurb: string;
+  /**
+   * Main-attack travel range in world units — DISPLAY ONLY, used to size the aim
+   * indicator. This mirrors `projectileRange` in server/src/config.ts (same
+   * accepted duplication as maps.ts); keep it roughly in sync. The server still
+   * owns the real range.
+   */
+  range: number;
 }
 
 export const MONSTER_LOOKS: Record<string, MonsterLook> = {
@@ -26,6 +33,7 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     radius: 22,
     accent: "#ff5252",
     blurb: "Fast melee biter. Fragile — dash in, chomp, dash out.",
+    range: 250,
   },
   spit: {
     id: "spit",
@@ -34,6 +42,7 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     radius: 19,
     accent: "#40c4ff",
     blurb: "Mid-range marksman. Super sprays a five-glob fan.",
+    range: 640,
   },
   brute: {
     id: "brute",
@@ -42,6 +51,7 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     radius: 28,
     accent: "#69f0ae",
     blurb: "Slow tank. Huge health, heavy boulders that hit hard.",
+    range: 400,
   },
 };
 
