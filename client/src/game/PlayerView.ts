@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import type { PlayerSnapshot } from "../net/Network";
 import { lookOf } from "./monsters";
+import { LOCAL_LERP_RATE, REMOTE_LERP_RATE } from "../config";
 
 /** Dark green-black used for the soft contact shadow and the bold outline rim. */
 const SHADOW = 0x07140a;
@@ -188,9 +189,13 @@ export class PlayerView {
 
   /**
    * Glide the drawn position toward the target and keep all the bits attached.
-   * `smoothing` is in [0, 1]; bigger = snappier, smaller = floatier.
+   * `dt` is the frame time in seconds; we convert a per-second rate into a
+   * framerate-independent step. Your own monster tracks harder (snappier) than
+   * other players.
    */
-  interpolate(smoothing: number): void {
+  interpolate(dt: number): void {
+    const rate = this.isLocal ? LOCAL_LERP_RATE : REMOTE_LERP_RATE;
+    const smoothing = 1 - Math.exp(-rate * dt);
     const x = Phaser.Math.Linear(this.body.x, this.targetX, smoothing);
     const y = Phaser.Math.Linear(this.body.y, this.targetY, smoothing);
     this.body.setPosition(x, y);

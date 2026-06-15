@@ -14,8 +14,8 @@ import { PowerCubeView } from "./PowerCubeView";
 import { BoxView } from "./BoxView";
 import { Controls, type Dir } from "../input/Controls";
 import {
-  INTERPOLATION_SMOOTHING,
-  PROJECTILE_SMOOTHING,
+  PROJECTILE_LERP_RATE,
+  CAMERA_FOLLOW_LERP,
   AIM_SEND_INTERVAL,
   FIRE_REPEAT_INTERVAL,
   SERVER_URL,
@@ -371,7 +371,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, width, height);
     this.cameras.main.setZoom(CAMERA_ZOOM);
     const me = this.players.get(this.net.selfId);
-    if (me) this.cameras.main.startFollow(me.body, true, 0.15, 0.15);
+    if (me) this.cameras.main.startFollow(me.body, true, CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_LERP);
   }
 
   /** Paint one wall AABB as a raised wooden crate (shadow + side + top). */
@@ -446,7 +446,7 @@ export class GameScene extends Phaser.Scene {
     const isLocal = p.id === this.net.selfId;
     const view = new PlayerView(this, p, isLocal);
     this.players.set(p.id, view);
-    if (isLocal) this.cameras.main.startFollow(view.body, true, 0.15, 0.15);
+    if (isLocal) this.cameras.main.startFollow(view.body, true, CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_LERP);
   }
 
   private removePlayer(id: string) {
@@ -630,9 +630,11 @@ export class GameScene extends Phaser.Scene {
     this.sendMovement();
     this.handleDesktopAim();
 
-    const dt = delta / 1000;
-    this.players.forEach((v) => v.interpolate(INTERPOLATION_SMOOTHING));
-    this.projectiles.forEach((v) => v.interpolate(PROJECTILE_SMOOTHING));
+    // Clamp dt so a frame hitch (e.g. tab refocus) doesn't snap everything.
+    const dt = Math.min(delta / 1000, 0.1);
+    const projT = 1 - Math.exp(-PROJECTILE_LERP_RATE * dt);
+    this.players.forEach((v) => v.interpolate(dt));
+    this.projectiles.forEach((v) => v.interpolate(projT));
     this.cubes.forEach((v) => v.bob(dt));
 
     this.drawAim();
