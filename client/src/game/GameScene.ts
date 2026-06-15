@@ -290,7 +290,17 @@ export class GameScene extends Phaser.Scene {
         this.failToLobby(`Couldn't join the game at ${SERVER_URL}${detail}.`);
       });
 
-    this.events.once("shutdown", () => {
+    // Tear everything down on scene end. IMPORTANT: this app only ever ends the
+    // scene via game.destroy() (the "join-error" → back-to-lobby path), and
+    // Phaser fires DESTROY — not SHUTDOWN — on game.destroy(). Listening only for
+    // "shutdown" meant this never ran, so the full-screen waiting-room overlay
+    // (and the net connection, controls, audio) leaked — i.e. "Leave" appeared to
+    // do nothing because the overlay stayed on top of the lobby. Handle both,
+    // guarded so it runs once.
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
       if (this.connectTimer) window.clearTimeout(this.connectTimer);
       this.scale.off("resize", this.applyZoom, this);
       this.hideStatus();
@@ -304,7 +314,9 @@ export class GameScene extends Phaser.Scene {
           document.removeEventListener(ev, this.audioUnlock, { capture: true });
         }
       }
-    });
+    };
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, cleanup);
+    this.events.once(Phaser.Scenes.Events.DESTROY, cleanup);
   }
 
   /** We're connected: drop the timeout + overlay. */
