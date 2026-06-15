@@ -824,28 +824,60 @@ export class GameScene extends Phaser.Scene {
     this.aimLine.strokeCircle(bx + Math.cos(f) * range, by + Math.sin(f) * range, 7);
   }
 
-  /** Paint the poison region (everything outside the shrinking safe rectangle). */
+  /**
+   * Paint the poison as a creeping wall of gas (everything outside the shrinking
+   * safe rectangle), not a flat box: a deep purple haze fills the danger region,
+   * and a row of billowing, drifting puffs licks inward along the safe boundary.
+   * A faint pulsing line still marks the exact safe edge for readability.
+   */
   private drawPoison() {
     const m = this.net.match;
-    this.poison.clear();
+    const g = this.poison;
+    g.clear();
     if (!m) return;
 
-    const w = (this.cameras.main.getBounds().width) || 0;
-    const h = (this.cameras.main.getBounds().height) || 0;
-    if (w === 0 || h === 0) return;
+    const w = this.cameras.main.getBounds().width || 0;
+    const h = this.cameras.main.getBounds().height || 0;
+    if (!w || !h) return;
 
-    // Bright outline around the safe area.
-    this.poison.lineStyle(3, 0x66e0ff, 0.8);
-    this.poison.strokeRect(m.safeMinX, m.safeMinY, m.safeMaxX - m.safeMinX, m.safeMaxY - m.safeMinY);
+    const x0 = m.safeMinX;
+    const y0 = m.safeMinY;
+    const x1 = m.safeMaxX;
+    const y1 = m.safeMaxY;
+    const t = performance.now() / 1000;
 
-    // Translucent danger bands covering the unsafe edges. Punchy enough to read
-    // clearly over the bright grass (a weak tint vanishes against green).
-    this.poison.fillStyle(0x7b1fa2, 0.42);
-    // top, bottom, left, right
-    this.poison.fillRect(0, 0, w, m.safeMinY);
-    this.poison.fillRect(0, m.safeMaxY, w, h - m.safeMaxY);
-    this.poison.fillRect(0, m.safeMinY, m.safeMinX, m.safeMaxY - m.safeMinY);
-    this.poison.fillRect(m.safeMaxX, m.safeMinY, w - m.safeMaxX, m.safeMaxY - m.safeMinY);
+    // 1) Deep gas haze filling the whole danger region (the four edge bands).
+    g.fillStyle(0x4a1063, 0.34);
+    g.fillRect(0, 0, w, y0);
+    g.fillRect(0, y1, w, h - y1);
+    g.fillRect(0, y0, x0, y1 - y0);
+    g.fillRect(x1, y0, w - x1, y1 - y0);
+
+    // 2) Billowing puffs along the safe boundary — overlapping translucent
+    //    circles, each bobbing on its own phase so the edge roils like gas.
+    const edges = [
+      { horiz: true, from: x0, to: x1, fixed: y0, nx: 0, ny: -1 }, // top
+      { horiz: true, from: x0, to: x1, fixed: y1, nx: 0, ny: 1 }, // bottom
+      { horiz: false, from: y0, to: y1, fixed: x0, nx: -1, ny: 0 }, // left
+      { horiz: false, from: y0, to: y1, fixed: x1, nx: 1, ny: 0 }, // right
+    ];
+    const SP = 82;
+    for (const e of edges) {
+      for (let s = e.from; s <= e.to; s += SP) {
+        const ex = e.horiz ? s : e.fixed;
+        const ey = e.horiz ? e.fixed : s;
+        const phase = ex * 0.02 + ey * 0.018;
+        const off = 22 + Math.sin(t * 1.3 + phase) * 12; // creep in/out
+        const cx = ex + e.nx * off;
+        const cy = ey + e.ny * off;
+        const r = 50 + Math.sin(t * 1.7 + phase * 1.4) * 12;
+        g.fillStyle(0x7b1fa2, 0.4);
+        g.fillCircle(cx, cy, r);
+        g.fillStyle(0xb44ad6, 0.32);
+        g.fillCircle(cx + e.nx * 8, cy + e.ny * 8, r * 0.55);
+      }
+    }
+    // No hard outline — the gas wall itself shows where the safe zone ends.
   }
 
   /**
