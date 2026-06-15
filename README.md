@@ -1,9 +1,4 @@
-# Monster Mash 🟣 — Milestone 2 (Showdown)
-
-> **Working title only.** "Monster Mash" is a placeholder (it matches the repo
-> name) — pick the real name with your son! It only appears in a couple of
-> spots: `client/index.html`, `client/vite.config.ts` (the PWA manifest), and
-> this README.
+# Monster Mash 🟣
 
 A tiny, private, browser-based **2D top-down brawler** you can play with friends
 on the same wifi — a monster-themed take on Brawl Stars. No app store, no

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A private, browser-based 2D top-down brawler (monster-themed Brawl Stars clone) intended for LAN play with friends. PWA installable to a phone home screen. "Monster Mash" is a placeholder name. Currently at **Milestone 3 (Terrain)**: everything from Showdown (free-for-all rounds, three monsters, power cubes, closing poison zone) plus static terrain — **walls** that block movement *and* projectiles, and **bushes** you walk through to hide from other players.
+A private, browser-based 2D top-down brawler (monster-themed Brawl Stars clone) intended for LAN play with friends. PWA installable to a phone home screen. Currently at **Milestone 3 (Terrain)**: everything from Showdown (free-for-all rounds, three monsters, power cubes, closing poison zone) plus static terrain — **walls** that block movement *and* projectiles, and **bushes** you walk through to hide from other players.
 
 ## Commands
 
