@@ -54,6 +54,8 @@ export class Controls {
   private lastAim: Dir = { x: 1, y: 0 };
   private aimMoved = false;
   private lastAimSent = 0;
+  /** True while the aim stick is being held (drives the aim indicator on touch). */
+  private aimActive = false;
 
   constructor(scene: Phaser.Scene, private events: ControlEvents) {
     const gameEl = document.getElementById("game")!;
@@ -128,6 +130,9 @@ export class Controls {
       restJoystick: true,
       maxNumberOfJoysticks: 1,
     });
+    this.aimStick.on("start", () => {
+      this.aimActive = true;
+    });
     this.aimStick.on("move", (event) => {
       const x = event.data.vector.x;
       const y = -event.data.vector.y;
@@ -144,7 +149,13 @@ export class Controls {
       // Dragged out = aimed shot; barely moved = quick fire (auto-aim).
       this.events.onFire(this.aimMoved ? this.lastAim : { x: 0, y: 0 });
       this.aimMoved = false;
+      this.aimActive = false;
     });
+  }
+
+  /** True while the player is holding the aim stick (touch). */
+  isAiming(): boolean {
+    return this.aimActive;
   }
 
   private blockContext = (e: Event) => e.preventDefault();

@@ -28,6 +28,8 @@ export class PlayerView {
   private pointer: Phaser.GameObjects.Triangle;
   private healthBg: Phaser.GameObjects.Rectangle;
   private healthFill: Phaser.GameObjects.Rectangle;
+  /** Local player only: the super charge ring + ammo pips, redrawn each frame. */
+  private selfHud?: Phaser.GameObjects.Graphics;
 
   private readonly scene: Phaser.Scene;
   private readonly radius: number;
@@ -110,6 +112,10 @@ export class PlayerView {
       .setOrigin(0, 0.5)
       .setDepth(4);
 
+    // Brawl-Stars-style on-character HUD for your OWN monster: a super charge
+    // ring around the body and ammo pips beneath it (enemies don't show these).
+    if (isLocal) this.selfHud = scene.add.graphics().setDepth(4);
+
     this.applySnap(player);
     // Pop in on first appearance (joining alive / round start).
     if (player.alive) this.playSpawnIn();
@@ -155,9 +161,10 @@ export class PlayerView {
     this.healthFill.width = barW * frac;
     this.healthFill.fillColor = frac > 0.5 ? 0x4caf50 : frac > 0.25 ? 0xffb300 : 0xe53935;
 
-    // Super-ready monsters get a bright, thick ring so you can see it's charged.
-    if (player.alive && player.super >= 1) {
-      this.body.setStrokeStyle(5, 0xffffff, 1);
+    // A charged ENEMY gets a bright white ring as a tell. Your own super is
+    // shown by the on-character ring (drawSelfHud), so skip the recolor locally.
+    if (player.alive && player.super >= 1 && !this.isLocal) {
+      this.body.setStrokeStyle(4, 0xffffff, 1);
     } else {
       this.body.setStrokeStyle(this.isLocal ? 4 : 3, this.colorNum, 1);
     }
@@ -208,6 +215,56 @@ export class PlayerView {
     this.label.setPosition(x, y - this.radius - 26);
     this.healthBg.setPosition(x, y - this.radius - 12);
     this.healthFill.setPosition(x - (this.radius * 2.4) / 2, y - this.radius - 12);
+
+    if (this.selfHud) this.drawSelfHud(x, y);
+  }
+
+  /**
+   * Draw the local player's super ring + ammo pips (Brawl-Stars-style readout on
+   * the character itself). Cleared while dead.
+   */
+  private drawSelfHud(x: number, y: number): void {
+    const g = this.selfHud!;
+    g.clear();
+    if (!this.snap.alive) return;
+
+    // ---- super charge ring around the body ----
+    const r = this.radius + 8;
+    const sup = Phaser.Math.Clamp(this.snap.super, 0, 1);
+    g.lineStyle(4, 0x000000, 0.3); // faint track
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.strokePath();
+    if (sup > 0) {
+      const ready = sup >= 1;
+      // Charging = cyan; ready = white with a gentle pulse in width.
+      const pulse = ready ? 5 + Math.sin(performance.now() / 140) * 1.2 : 4;
+      g.lineStyle(pulse, ready ? 0xffffff : 0x4dd0ff, 1);
+      g.beginPath();
+      g.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + sup * Math.PI * 2);
+      g.strokePath();
+    }
+
+    // ---- ammo pips: a row of capsules beneath the body ----
+    const n = this.snap.ammoMax;
+    if (n > 0) {
+      const totalW = this.radius * 1.9;
+      const gap = 3;
+      const segW = (totalW - gap * (n - 1)) / n;
+      const segH = 5;
+      const py = y + this.radius + 12;
+      let sx = x - totalW / 2;
+      for (let i = 0; i < n; i++) {
+        const frac = Phaser.Math.Clamp(this.snap.ammo - i, 0, 1);
+        g.fillStyle(0x000000, 0.5);
+        g.fillRoundedRect(sx, py, segW, segH, 2);
+        if (frac > 0) {
+          g.fillStyle(frac >= 1 ? 0xffffff : 0xbfd8ff, frac >= 1 ? 1 : 0.85);
+          g.fillRoundedRect(sx, py, segW * frac, segH, 2);
+        }
+        sx += segW + gap;
+      }
+    }
   }
 
   destroy(): void {
@@ -219,5 +276,6 @@ export class PlayerView {
     this.label.destroy();
     this.healthBg.destroy();
     this.healthFill.destroy();
+    this.selfHud?.destroy();
   }
 }
