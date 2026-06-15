@@ -241,6 +241,24 @@ button.primary:active {
   transform: scale(0.93);
 }
 
+/* ---- Sound on/off button (created by GameScene) ---- */
+.mute-btn {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px solid #4a4a6a;
+  background: rgba(40, 40, 70, 0.55);
+  font-size: 18px;
+  line-height: 1;
+  z-index: 6;
+  cursor: pointer;
+  touch-action: none;
+  padding: 0;
+}
+
 /* Charged and ready: glow gold and become tappable-looking. */
 .super-btn.ready {
   border-color: #ffd740;

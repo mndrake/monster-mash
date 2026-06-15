@@ -16,6 +16,15 @@ export class Sfx {
   private master?: GainNode;
   private enabled = true;
 
+  // --- looping background music (also synthesized, no files) ---
+  private musicGain?: GainNode;
+  private musicTimer?: number;
+  private musicOn = false;
+  /** Absolute time (ctx clock) the next 8th-note is scheduled for. */
+  private nextNote = 0;
+  /** Position in the 16-step (2-bar) pattern. */
+  private step = 0;
+
   constructor() {
     try {
       const Ctor: typeof AudioContext =
@@ -37,13 +46,83 @@ export class Sfx {
 
   setEnabled(on: boolean): void {
     this.enabled = on;
+    // Mute the music bed without tearing the scheduler down.
+    if (this.musicGain && this.ctx) {
+      this.musicGain.gain.setTargetAtTime(on ? 0.13 : 0, this.ctx.currentTime, 0.05);
+    }
+  }
+
+  isEnabled(): boolean {
+    return this.enabled;
   }
 
   /** Release the audio context (call when leaving the game). */
   close(): void {
+    this.stopMusic();
     if (this.ctx && this.ctx.state !== "closed") void this.ctx.close();
     this.ctx = undefined;
     this.master = undefined;
+  }
+
+  // --- background music ------------------------------------------------------
+
+  /** Begin the looping music bed (idempotent). */
+  startMusic(): void {
+    if (!this.ctx || !this.master || this.musicOn) return;
+    this.musicOn = true;
+    if (!this.musicGain) {
+      this.musicGain = this.ctx.createGain();
+      this.musicGain.gain.value = this.enabled ? 0.13 : 0;
+      this.musicGain.connect(this.master);
+    }
+    this.nextNote = this.ctx.currentTime + 0.1;
+    this.step = 0;
+    // Lookahead scheduler (the "two clocks" pattern): a coarse timer schedules
+    // notes a little ahead of the precise audio clock so timing stays steady.
+    this.musicTimer = window.setInterval(() => this.scheduleMusic(), 25);
+  }
+
+  /** Stop the music bed. */
+  stopMusic(): void {
+    this.musicOn = false;
+    if (this.musicTimer !== undefined) {
+      clearInterval(this.musicTimer);
+      this.musicTimer = undefined;
+    }
+  }
+
+  private scheduleMusic(): void {
+    if (!this.ctx || !this.musicOn) return;
+    const eighth = 60 / 112 / 2; // 112 BPM, eighth notes
+    while (this.nextNote < this.ctx.currentTime + 0.12) {
+      this.musicNote(this.step, this.nextNote, eighth);
+      this.nextNote += eighth;
+      this.step = (this.step + 1) % 16;
+    }
+  }
+
+  /** One step of the loop: a soft arpeggio note, plus a bass note every beat. */
+  private musicNote(step: number, t: number, eighth: number): void {
+    // A-minor pentatonic — pleasant and never dissonant on a loop.
+    const ARP = [220, 329.63, 261.63, 440, 392, 261.63, 329.63, 220, 220, 329.63, 293.66, 440, 392, 293.66, 261.63, 220];
+    const BASS: Record<number, number> = { 0: 110, 4: 130.81, 8: 98, 12: 110 };
+    this.musicVoice(ARP[step], t, eighth * 0.9, "triangle", 0.16);
+    if (BASS[step]) this.musicVoice(BASS[step], t, eighth * 3.6, "sine", 0.32);
+  }
+
+  /** A single enveloped music note routed through the (mutable) music gain. */
+  private musicVoice(freq: number, t: number, dur: number, type: OscillatorType, gain: number): void {
+    if (!this.ctx || !this.musicGain) return;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g).connect(this.musicGain);
+    osc.start(t);
+    osc.stop(t + dur + 0.03);
   }
 
   // --- low-level voices -----------------------------------------------------

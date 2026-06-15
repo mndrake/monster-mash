@@ -99,6 +99,8 @@ export class GameScene extends Phaser.Scene {
   // A DOM overlay shown while connecting (robust on mobile, no canvas needed).
   private statusEl?: HTMLElement;
   private connectTimer?: number;
+  /** The sound on/off button (DOM, top-right). */
+  private muteBtn?: HTMLButtonElement;
 
   // Movement: only send when it actually changes.
   private lastMoveX = 0;
@@ -138,6 +140,11 @@ export class GameScene extends Phaser.Scene {
     // Browsers start audio suspended until a user gesture — unlock on first input.
     this.input.once("pointerdown", () => this.sfx.resume());
     this.input.keyboard!.once("keydown", () => this.sfx.resume());
+
+    // Sound on/off (persisted). A small button for touch, plus the M key.
+    this.sfx.setEnabled(localStorage.getItem("mm-muted") !== "1");
+    this.createMuteButton();
+    this.input.keyboard!.addKey("M").on("down", () => this.toggleMute());
 
     // Above the floor/grid, below the monsters — a tinted hazard on the ground.
     this.poison = this.add.graphics().setDepth(-5);
@@ -213,6 +220,7 @@ export class GameScene extends Phaser.Scene {
       this.controls.destroy();
       this.net.leave();
       this.sfx.close();
+      this.muteBtn?.remove();
     });
   }
 
@@ -247,6 +255,32 @@ export class GameScene extends Phaser.Scene {
   private hideStatus() {
     this.statusEl?.remove();
     this.statusEl = undefined;
+  }
+
+  /** A small sound on/off button in the top-right corner. */
+  private createMuteButton() {
+    const btn = document.createElement("button");
+    btn.className = "mute-btn";
+    btn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.sfx.resume(); // counts as the unlock gesture too
+      this.toggleMute();
+    });
+    document.getElementById("game")!.appendChild(btn);
+    this.muteBtn = btn;
+    this.refreshMuteButton();
+  }
+
+  private toggleMute() {
+    const muted = this.sfx.isEnabled(); // about to flip
+    this.sfx.setEnabled(!this.sfx.isEnabled());
+    localStorage.setItem("mm-muted", muted ? "1" : "0");
+    this.refreshMuteButton();
+  }
+
+  private refreshMuteButton() {
+    if (this.muteBtn) this.muteBtn.textContent = this.sfx.isEnabled() ? "🔊" : "🔇";
   }
 
   /**
@@ -748,9 +782,11 @@ export class GameScene extends Phaser.Scene {
       this.prevCountdown = -1;
     }
 
-    // A win/lose sting the moment the round ends.
+    // On a phase change: win/lose sting, and run the music bed during PLAYING.
     if (m.phase !== this.prevPhase) {
       if (m.phase === "roundover") this.sfx.sting(!!me && me.rank === 1);
+      if (m.phase === "playing") this.sfx.startMusic();
+      else this.sfx.stopMusic();
       this.prevPhase = m.phase;
     }
   }
@@ -802,7 +838,8 @@ export class GameScene extends Phaser.Scene {
     }
     const cam = this.cameras.main;
     this.killFeed.forEach((e, i) => {
-      this.placeUi(e.text, cam.width - 12, 12 + i * 24);
+      // Start below the top-right mute button so they don't overlap.
+      this.placeUi(e.text, cam.width - 12, 46 + i * 24);
       const left = e.expireAt - now;
       e.text.setAlpha(left < 400 ? Math.max(0, left / 400) : 1);
     });
