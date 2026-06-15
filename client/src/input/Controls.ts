@@ -106,6 +106,9 @@ export class Controls {
       color: "white",
       size: 120,
       restJoystick: true,
+      // One stick per zone — a stray second finger must not spawn a ghost
+      // joystick that lingers after the real one is released.
+      maxNumberOfJoysticks: 1,
     });
     this.moveStick.on("move", (event) => {
       this.joyX = event.data.vector.x;
@@ -123,6 +126,7 @@ export class Controls {
       color: "#ff5252",
       size: 120,
       restJoystick: true,
+      maxNumberOfJoysticks: 1,
     });
     this.aimStick.on("move", (event) => {
       const x = event.data.vector.x;

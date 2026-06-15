@@ -31,6 +31,8 @@ export interface PlayerSnapshot {
   super: number;
   cubes: number;
   alive: boolean;
+  /** Hidden in a bush — other clients dim them; the local client ignores this. */
+  hidden: boolean;
   rank: number;
   kills: number;
 }
@@ -64,10 +66,33 @@ export interface MatchInfo {
   safeMaxY: number;
 }
 
+/**
+ * A landed hit (for floating damage numbers + sparks). Position is the impact
+ * point in world units; `targetId` is the player that was hit. Poison damage
+ * does NOT produce these (it ticks every frame — would spam).
+ */
+export interface HitEvent {
+  x: number;
+  y: number;
+  amount: number;
+  kind: string; // "main" | "super"
+  targetId: string;
+}
+
+/** A knockout (for the defeat explosion + kill feed). `killerId` is "" for poison. */
+export interface KOEvent {
+  x: number;
+  y: number;
+  victimId: string;
+  victimName: string;
+  killerId: string;
+  killerName: string;
+}
+
 /** Callbacks the game provides so it can react to what the server tells us. */
 export interface NetEvents {
-  /** Fires once, when we've joined and received the arena size. */
-  onJoin: (arenaWidth: number, arenaHeight: number) => void;
+  /** Fires once, when we've joined and received the arena size + terrain id. */
+  onJoin: (arenaWidth: number, arenaHeight: number, mapId: string) => void;
   onPlayerAdd: (player: PlayerSnapshot) => void;
   onPlayerChange: (player: PlayerSnapshot) => void;
   onPlayerRemove: (id: string) => void;
@@ -76,6 +101,10 @@ export interface NetEvents {
   onProjectileRemove: (id: string) => void;
   onCubeAdd: (cube: CubeSnapshot) => void;
   onCubeRemove: (id: string) => void;
+  /** A shot landed on someone (damage numbers / sparks). */
+  onHit?: (hit: HitEvent) => void;
+  /** Someone was defeated (explosion / kill feed). */
+  onKO?: (ko: KOEvent) => void;
 }
 
 export class Network {
@@ -96,7 +125,7 @@ export class Network {
 
   /** How many players are currently in our room. */
   get playerCount(): number {
-    return this.room?.state.players.size ?? 0;
+    return this.room?.state?.players?.size ?? 0;
   }
 
   /**
@@ -116,7 +145,7 @@ export class Network {
 
     // Deliver the arena size to the game as soon as the first state arrives.
     this.room.onStateChange.once((state) => {
-      events.onJoin(state.width, state.height);
+      events.onJoin(state.width, state.height, state.mapId);
     });
 
     // ---- players ----
@@ -136,6 +165,14 @@ export class Network {
     // ---- power cubes ----
     $(this.room.state).cubes.onAdd((cube, id) => events.onCubeAdd({ id, x: cube.x, y: cube.y }));
     $(this.room.state).cubes.onRemove((_cube, id) => events.onCubeRemove(id));
+
+    // ---- juice events (batched once per tick, outside the state sync) ----
+    this.room.onMessage("fx", (list: Array<HitEvent & KOEvent & { t: string }>) => {
+      for (const e of list) {
+        if (e.t === "hit") events.onHit?.(e);
+        else if (e.t === "ko") events.onKO?.(e);
+      }
+    });
   }
 
   // ---- intent we send to the server (it decides what actually happens) ----
@@ -156,7 +193,9 @@ export class Network {
 
   /** A live snapshot of our own monster (for the HUD), or undefined if gone. */
   get self(): PlayerSnapshot | undefined {
-    const p = this.room?.state.players.get(this.selfId);
+    // state.players can be momentarily undefined between joining and the first
+    // state sync; guard so a render frame in that window can't throw.
+    const p = this.room?.state?.players?.get(this.selfId);
     return p ? playerSnap(this.selfId, p) : undefined;
   }
 
@@ -190,7 +229,7 @@ function playerSnap(
     x: number; y: number; name: string; color: string; monster: string;
     facing: number; health: number; maxHealth: number; ammo: number;
     ammoMax: number; super: number; cubes: number; alive: boolean;
-    rank: number; kills: number;
+    hidden: boolean; rank: number; kills: number;
   },
 ): PlayerSnapshot {
   return {
@@ -208,6 +247,7 @@ function playerSnap(
     super: p.super,
     cubes: p.cubes,
     alive: p.alive,
+    hidden: p.hidden,
     rank: p.rank,
     kills: p.kills,
   };

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "pollinations": {
+      "command": "npx",
+      "args": ["-y", "@pollinations/mcp"],
+      "env": {
+        "POLLINATIONS_API_KEY": "${POLLINATIONS_TOKEN}"
+      }
+    }
+  }
+}
