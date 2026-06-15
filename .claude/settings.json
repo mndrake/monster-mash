@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run typecheck)",
+      "Bash(npm --workspace client run typecheck)",
+      "Bash(npm --workspace server run typecheck)"
+    ]
+  }
+}

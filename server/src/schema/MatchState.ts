@@ -19,6 +19,12 @@ export class MatchState extends Schema {
   /** The room code players typed to join (handy to display in the client). */
   @type("string") roomCode = "";
 
+  /**
+   * Which static terrain layout this room uses (see MAPS in config). Sent once
+   * so the client can look up the same walls/bushes table and draw them.
+   */
+  @type("string") mapId = "";
+
   // ---- match flow ----
   /** "countdown" | "playing" | "roundover" (see PHASE in config). */
   @type("string") phase = "countdown";

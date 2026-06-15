@@ -34,6 +34,13 @@ export class Player extends Schema {
   /** False once defeated — the client draws them as a faded ghost / spectator. */
   @type("boolean") alive = true;
 
+  /**
+   * True when this monster is hidden in a bush (standing in one and not having
+   * fired or taken damage recently). Other clients dim them; the local client
+   * always shows itself. Gameplay truth, so it lives on the server.
+   */
+  @type("boolean") hidden = false;
+
   // ---- round results (synced, for the end-of-round banner) ----
   /** Final placement once defeated (1 = winner). 0 while still alive. */
   @type("number") rank = 0;

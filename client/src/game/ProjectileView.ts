@@ -8,6 +8,8 @@ import type { ProjectileSnapshot } from "../net/Network";
  */
 export class ProjectileView {
   private dot: Phaser.GameObjects.Arc;
+  /** Additive halo behind the dot so shots glow and pop off the grass. */
+  private glow: Phaser.GameObjects.Arc;
   private targetX: number;
   private targetY: number;
 
@@ -15,10 +17,16 @@ export class ProjectileView {
     this.targetX = proj.x;
     this.targetY = proj.y;
     const color = Phaser.Display.Color.HexStringToColor(proj.color).color;
+
+    this.glow = scene.add
+      .circle(proj.x, proj.y, proj.radius * (proj.kind === "super" ? 2.6 : 2.1), color, 0.45)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(5);
+
     this.dot = scene.add
       .circle(proj.x, proj.y, proj.radius, color, 1)
       // Supers get a bright white outline so they read as the "big" attack.
-      .setStrokeStyle(proj.kind === "super" ? 3 : 2, 0xffffff, proj.kind === "super" ? 0.9 : 0.5)
+      .setStrokeStyle(proj.kind === "super" ? 3 : 2, 0xffffff, proj.kind === "super" ? 0.95 : 0.6)
       .setDepth(6);
   }
 
@@ -28,13 +36,14 @@ export class ProjectileView {
   }
 
   interpolate(smoothing: number): void {
-    this.dot.setPosition(
-      Phaser.Math.Linear(this.dot.x, this.targetX, smoothing),
-      Phaser.Math.Linear(this.dot.y, this.targetY, smoothing),
-    );
+    const x = Phaser.Math.Linear(this.dot.x, this.targetX, smoothing);
+    const y = Phaser.Math.Linear(this.dot.y, this.targetY, smoothing);
+    this.dot.setPosition(x, y);
+    this.glow.setPosition(x, y);
   }
 
   destroy(): void {
     this.dot.destroy();
+    this.glow.destroy();
   }
 }

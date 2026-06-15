@@ -10,6 +10,35 @@ import { MONSTER_ORDER, lookOf } from "./game/monsters";
  * makes the text inputs behave nicely with mobile keyboards.
  */
 
+/**
+ * Kill browser pinch-/double-tap-zoom on touch devices.
+ *
+ * iOS Safari IGNORES `user-scalable=no` / `maximum-scale` in the viewport meta
+ * (Apple disabled it for accessibility), so two thumbs on the twin-stick zones
+ * trigger a page pinch-zoom. Worse, recognising that gesture makes Safari STEAL
+ * the touch — it never delivers a touchend/touchcancel, so nipplejs can't clean
+ * up and the aim stick gets stuck on screen and stops firing. Preventing the
+ * gesture here fixes both the zoom and the stuck stick.
+ *
+ * We block the iOS-only `gesture*` events and any multi-touch `touchmove`.
+ * preventDefault only stops the browser's default (zoom/scroll); the events
+ * still reach nipplejs, so the joysticks keep working. Single-touch taps and
+ * typing in the lobby are untouched.
+ */
+function disablePageZoom() {
+  for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
+    document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+  }
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      if ((e as TouchEvent).touches.length > 1) e.preventDefault();
+    },
+    { passive: false },
+  );
+}
+disablePageZoom();
+
 const lobby = document.getElementById("lobby")!;
 const nameInput = document.getElementById("name") as HTMLInputElement;
 const codeInput = document.getElementById("code") as HTMLInputElement;

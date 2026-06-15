@@ -215,6 +215,125 @@ export function monsterById(id: string): MonsterType {
   return MONSTERS.find((m) => m.id === id) ?? MONSTERS[0];
 }
 
+// ---------------------------------------------------------------------------
+//  Static terrain (Milestone 3) — walls + bushes
+// ---------------------------------------------------------------------------
+//
+// Walls block BOTH movement and projectiles (hard cover). Bushes are walked
+// through; standing in one (and not firing / not recently hit) hides you from
+// other players (soft cover / ambush). All geometry is axis-aligned rectangles
+// in world units — top-left corner + size — which maps cleanly onto the
+// server's collision model (circle-vs-AABB for players, segment-vs-AABB for
+// shots). See docs/m3-maps.md for the design rationale and the per-rect checks
+// against the endgame core box. Terrain is STATIC, so it is chosen once per
+// room and sent to the client via MatchState.mapId (the client holds the same
+// table and looks it up — no per-tick sync cost).
+
+/** An axis-aligned rectangle in world units: top-left corner + size. */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface Vec2 {
+  x: number;
+  y: number;
+}
+
+/** One arena layout: its blocking walls, its hiding bushes, suggested cubes. */
+export interface GameMap {
+  id: string;
+  name: string;
+  walls: Rect[];
+  bushes: Rect[];
+  /** Suggested deterministic cube spots (currently unused — spawns are random). */
+  cubeAnchors?: Vec2[];
+}
+
+/**
+ * Firing or taking damage reveals you from a bush for this long (ms). You only
+ * count as hidden once you've been quiet AND unhurt for at least this window.
+ */
+export const BUSH_REVEAL_MS = 1000;
+
+/**
+ * The arena layouts. Both are fully specced in docs/m3-maps.md and validated so
+ * no wall sits inside the endgame core box ([820,1180]²). "Crossroads" is the
+ * default/ranked map; "Fang Hollow" is included for variety but not yet wired.
+ */
+export const MAPS: GameMap[] = [
+  {
+    id: "crossroads",
+    name: "The Crossroads",
+    walls: [
+      // Corner L-bunkers (open side faces the plaza).
+      { x: 240, y: 240, w: 300, h: 90 }, // A1 TL top arm
+      { x: 240, y: 240, w: 90, h: 300 }, // A2 TL side arm
+      { x: 1460, y: 240, w: 300, h: 90 }, // A3 TR
+      { x: 1670, y: 240, w: 90, h: 300 }, // A4 TR
+      { x: 240, y: 1670, w: 300, h: 90 }, // A5 BL
+      { x: 240, y: 1460, w: 90, h: 300 }, // A6 BL
+      { x: 1460, y: 1670, w: 300, h: 90 }, // A7 BR
+      { x: 1670, y: 1460, w: 90, h: 300 }, // A8 BR
+      // Pinwheel chokes around the plaza mouths (all outside the core).
+      { x: 900, y: 560, w: 200, h: 80 }, // A9 N
+      { x: 1360, y: 900, w: 80, h: 200 }, // A10 E
+      { x: 900, y: 1360, w: 200, h: 80 }, // A11 S
+      { x: 560, y: 900, w: 80, h: 200 }, // A12 W
+    ],
+    bushes: [
+      { x: 820, y: 140, w: 360, h: 180 }, // B1 N edge belt
+      { x: 820, y: 1680, w: 360, h: 180 }, // B2 S edge belt
+      { x: 140, y: 820, w: 180, h: 360 }, // B3 W edge belt
+      { x: 1680, y: 820, w: 180, h: 360 }, // B4 E edge belt
+      { x: 620, y: 620, w: 180, h: 180 }, // B5 TL diagonal
+      { x: 1200, y: 620, w: 180, h: 180 }, // B6 TR diagonal
+      { x: 620, y: 1200, w: 180, h: 180 }, // B7 BL diagonal
+      { x: 1200, y: 1200, w: 180, h: 180 }, // B8 BR diagonal
+    ],
+    cubeAnchors: [
+      { x: 450, y: 450 }, { x: 1550, y: 450 }, { x: 450, y: 1550 }, { x: 1550, y: 1550 },
+      { x: 1000, y: 400 }, { x: 1000, y: 1600 }, { x: 400, y: 1000 }, { x: 1600, y: 1000 },
+    ],
+  },
+  {
+    id: "fanghollow",
+    name: "Fang Hollow",
+    walls: [
+      // Fang 1 (hooks in from the top-left).
+      { x: 300, y: 520, w: 90, h: 360 }, // F1 shaft
+      { x: 300, y: 520, w: 420, h: 90 }, // F2 top bar
+      { x: 630, y: 610, w: 90, h: 300 }, // F3 tooth
+      // Fang 2 = Fang 1 rotated 180° about (1000,1000).
+      { x: 1610, y: 1120, w: 90, h: 360 }, // F4 shaft
+      { x: 1280, y: 1390, w: 420, h: 90 }, // F5 bottom bar
+      { x: 1280, y: 1090, w: 90, h: 300 }, // F6 tooth
+    ],
+    bushes: [
+      { x: 360, y: 200, w: 1280, h: 160 }, // G1 top belt
+      { x: 360, y: 1640, w: 1280, h: 160 }, // G2 bottom belt
+      { x: 760, y: 600, w: 280, h: 160 }, // G3 N-of-core peek
+      { x: 960, y: 1240, w: 280, h: 160 }, // G4 S-of-core peek
+      { x: 540, y: 940, w: 180, h: 220 }, // G5 west gallery
+      { x: 1280, y: 840, w: 180, h: 220 }, // G6 east gallery
+    ],
+    cubeAnchors: [
+      { x: 450, y: 700 }, { x: 450, y: 1000 }, { x: 1550, y: 1000 }, { x: 1550, y: 1300 },
+      { x: 900, y: 300 }, { x: 1100, y: 1700 }, { x: 800, y: 1000 }, { x: 1200, y: 1000 },
+    ],
+  },
+];
+
+/** Which layout new rooms use. */
+export const DEFAULT_MAP_ID = "crossroads";
+
+/** Look up a layout by id (falls back to the default map if unknown). */
+export function mapById(id: string): GameMap {
+  return MAPS.find((m) => m.id === id) ?? MAPS[0];
+}
+
 /**
  * Distinct, friendly colors handed out to players in join order so everyone
  * can tell each other apart even when two pick the same monster type.
