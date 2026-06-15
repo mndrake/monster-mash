@@ -21,6 +21,7 @@ import {
 } from "../config";
 import { mapById } from "./maps";
 import { lookOf } from "./monsters";
+import { Sfx } from "../audio/Sfx";
 
 /** Data passed in when we start this scene from the lobby. */
 interface SceneData {
@@ -85,6 +86,16 @@ export class GameScene extends Phaser.Scene {
   /** The local player's aim indicator (a dotted line along their facing). */
   private aimLine!: Phaser.GameObjects.Graphics;
 
+  /** Zero-asset sound effects. */
+  private sfx = new Sfx();
+  /** Top-right kill-feed lines, with their expiry times. */
+  private killFeed: { text: Phaser.GameObjects.Text; expireAt: number }[] = [];
+  // Edge-detection state for sound triggers (compared each frame).
+  private prevSuperReady = false;
+  private prevCubes = 0;
+  private prevCountdown = -1;
+  private prevPhase = "";
+
   // A DOM overlay shown while connecting (robust on mobile, no canvas needed).
   private statusEl?: HTMLElement;
   private connectTimer?: number;
@@ -123,6 +134,10 @@ export class GameScene extends Phaser.Scene {
     this.input.on("pointermove", (p: Phaser.Input.Pointer) => {
       if (!p.wasTouch) this.mouseMoved = true;
     });
+
+    // Browsers start audio suspended until a user gesture — unlock on first input.
+    this.input.once("pointerdown", () => this.sfx.resume());
+    this.input.keyboard!.once("keydown", () => this.sfx.resume());
 
     // Above the floor/grid, below the monsters — a tinted hazard on the ground.
     this.poison = this.add.graphics().setDepth(-5);
@@ -197,6 +212,7 @@ export class GameScene extends Phaser.Scene {
       this.hideStatus();
       this.controls.destroy();
       this.net.leave();
+      this.sfx.close();
     });
   }
 
@@ -386,6 +402,15 @@ export class GameScene extends Phaser.Scene {
     this.spawnMuzzleFlash(p);
     // Supers feel weighty — a quick, light camera kick when one goes off.
     if (p.kind === "super") this.cameras.main.shake(120, 0.0035);
+    // Shot sound, but only for shots near you (the snapshot has no owner id, so
+    // proximity stands in for "mine / worth hearing") to avoid a wall of noise.
+    if (this.nearSelf(p.x, p.y, 620)) this.sfx.shoot(p.kind);
+  }
+
+  /** True if a world point is within `r` of the local monster (for audio gating). */
+  private nearSelf(x: number, y: number, r: number): boolean {
+    const me = this.players.get(this.net.selfId);
+    return !!me && Math.hypot(me.body.x - x, me.body.y - y) <= r;
   }
 
   /** A brief expanding ring where a shot appears, tinted to its color. */
@@ -419,10 +444,15 @@ export class GameScene extends Phaser.Scene {
     const size = (isSelf ? 26 : 20) + Math.min(14, h.amount / 160);
     this.spawnDamageNumber(h.x, h.y, h.amount, color, Math.round(size));
     this.spawnBurst(h.x, h.y, Phaser.Display.Color.HexStringToColor(color).color, h.kind === "super" ? 18 : 12);
+    if (isSelf || this.nearSelf(h.x, h.y, 620)) this.sfx.hit(isSelf);
   }
 
   /** Someone was defeated: a burst of debris where they fell, in their color. */
   private onKO(k: KOEvent) {
+    const selfInvolved = k.victimId === this.net.selfId || k.killerId === this.net.selfId;
+    if (selfInvolved || this.nearSelf(k.x, k.y, 700)) this.sfx.defeat(k.victimId === this.net.selfId);
+    this.addKillFeed(k);
+
     const color = this.players.get(k.victimId)?.tintColor ?? 0xffffff;
     // Central flash.
     this.spawnBurst(k.x, k.y, 0xffffff, 26);
@@ -653,6 +683,9 @@ export class GameScene extends Phaser.Scene {
     const m = this.net.match;
     const me = this.net.self;
 
+    this.updateSoundTriggers();
+    this.updateKillFeed();
+
     // ---- HUD ----
     this.placeUi(this.hud, 12, 12);
     if (m) {
@@ -686,5 +719,92 @@ export class GameScene extends Phaser.Scene {
       this.banner.setText(me && !me.alive ? "Defeated — spectating" : "");
       if (me && !me.alive) this.banner.setFontSize(28);
     }
+  }
+
+  /** Edge-detected, state-driven sounds: super-ready, cube, countdown, sting. */
+  private updateSoundTriggers() {
+    const m = this.net.match;
+    const me = this.net.self;
+    if (!m) return;
+
+    // Super just finished charging.
+    const ready = !!me?.alive && (me?.super ?? 0) >= 1;
+    if (ready && !this.prevSuperReady) this.sfx.superReady();
+    this.prevSuperReady = ready;
+
+    // We picked up a power cube (our own count went up).
+    const cubes = me?.cubes ?? 0;
+    if (cubes > this.prevCubes) this.sfx.cube();
+    this.prevCubes = cubes;
+
+    // Countdown ticks (3… 2… 1…) and the "BRAWL!" accent on zero.
+    if (m.phase === "countdown") {
+      const n = Math.max(0, Math.ceil(m.phaseTimeLeft / 1000));
+      if (n !== this.prevCountdown) {
+        this.sfx.countdown(n === 0);
+        this.prevCountdown = n;
+      }
+    } else {
+      this.prevCountdown = -1;
+    }
+
+    // A win/lose sting the moment the round ends.
+    if (m.phase !== this.prevPhase) {
+      if (m.phase === "roundover") this.sfx.sting(!!me && me.rank === 1);
+      this.prevPhase = m.phase;
+    }
+  }
+
+  /** Add one line to the top-right kill feed (worded from your perspective). */
+  private addKillFeed(k: KOEvent) {
+    const self = this.net.selfId;
+    let msg: string;
+    let color: string;
+    if (k.killerId === "") {
+      msg = `${k.victimName} succumbed to the gas`;
+      color = "#c9a0ff";
+    } else if (k.killerId === self) {
+      msg = `You KO'd ${k.victimName}!`;
+      color = "#9cffb0";
+    } else if (k.victimId === self) {
+      msg = `${k.killerName} KO'd you`;
+      color = "#ff9a9a";
+    } else {
+      msg = `${k.killerName} KO'd ${k.victimName}`;
+      color = "#f0f0f0";
+    }
+
+    const text = this.add
+      .text(0, 0, msg, {
+        fontFamily: "sans-serif",
+        fontSize: "15px",
+        fontStyle: "bold",
+        color,
+        stroke: "#000000",
+        strokeThickness: 3,
+      })
+      .setOrigin(1, 0)
+      .setScrollFactor(0)
+      .setDepth(101);
+
+    this.killFeed.push({ text, expireAt: performance.now() + 3500 });
+    while (this.killFeed.length > 4) this.killFeed.shift()!.text.destroy();
+  }
+
+  /** Expire + re-stack the kill-feed lines at top-right (zoom-corrected). */
+  private updateKillFeed() {
+    const now = performance.now();
+    for (let i = this.killFeed.length - 1; i >= 0; i--) {
+      if (now >= this.killFeed[i].expireAt) {
+        this.killFeed[i].text.destroy();
+        this.killFeed.splice(i, 1);
+      }
+    }
+    const cam = this.cameras.main;
+    this.killFeed.forEach((e, i) => {
+      this.placeUi(e.text, cam.width - 12, 12 + i * 24);
+      const left = e.expireAt - now;
+      e.text.setAlpha(left < 400 ? Math.max(0, left / 400) : 1);
+    });
   }
 }
