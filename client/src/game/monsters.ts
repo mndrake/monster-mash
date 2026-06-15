@@ -23,6 +23,12 @@ export interface MonsterLook {
    * owns the real range.
    */
   range: number;
+  /**
+   * Move speed in world units/sec — mirrors `speed` in server/src/config.ts.
+   * Used ONLY for local-player movement prediction (see collision.ts); the
+   * server stays authoritative. Keep in sync with the server value.
+   */
+  speed: number;
 }
 
 export const MONSTER_LOOKS: Record<string, MonsterLook> = {
@@ -34,6 +40,7 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     accent: "#ff5252",
     blurb: "Fast melee biter. Fragile — dash in, chomp, dash out.",
     range: 250,
+    speed: 360,
   },
   spit: {
     id: "spit",
@@ -43,6 +50,7 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     accent: "#40c4ff",
     blurb: "Mid-range marksman. Super sprays a five-glob fan.",
     range: 640,
+    speed: 320,
   },
   brute: {
     id: "brute",
@@ -52,6 +60,7 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     accent: "#69f0ae",
     blurb: "Slow tank. Huge health, heavy boulders that hit hard.",
     range: 400,
+    speed: 250,
   },
 };
 

@@ -44,6 +44,21 @@ export const PROJECTILE_LERP_RATE = 45;
 /** How tightly the camera follows your monster (Phaser follow lerp, per frame). */
 export const CAMERA_FOLLOW_LERP = 0.25;
 
+// --- Local-player movement prediction -------------------------------------
+// Your own monster is simulated locally from your input (and the same collision
+// the server uses) so it responds instantly, then is gently reconciled to the
+// authoritative server position underneath.
+
+/** Per-second rate at which the predicted position eases toward the server's. */
+export const PRED_CORRECTION_RATE = 8;
+
+/**
+ * If the server position is further than this from the prediction, snap to it
+ * instead of easing — that's a teleport (super dash / respawn) or a real desync,
+ * not normal movement, so we don't want to crawl there.
+ */
+export const PRED_SNAP_DIST = 90;
+
 /** How often (ms) the client re-sends its aim direction while it's changing. */
 export const AIM_SEND_INTERVAL = 80;
 

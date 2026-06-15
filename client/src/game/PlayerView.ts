@@ -198,6 +198,20 @@ export class PlayerView {
     const smoothing = 1 - Math.exp(-rate * dt);
     const x = Phaser.Math.Linear(this.body.x, this.targetX, smoothing);
     const y = Phaser.Math.Linear(this.body.y, this.targetY, smoothing);
+    this.attach(x, y);
+  }
+
+  /**
+   * Place the body at an EXACT position — used for the local player, whose
+   * position is predicted client-side (see GameScene) for instant response
+   * rather than glided toward the laggy server position.
+   */
+  placeAt(x: number, y: number): void {
+    this.attach(x, y);
+  }
+
+  /** Move the body to (x, y) and bring every attached bit along with it. */
+  private attach(x: number, y: number): void {
     this.body.setPosition(x, y);
     this.rim.setPosition(x, y);
     this.shadow.setPosition(x, y + this.radius * 0.62);
