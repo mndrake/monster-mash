@@ -59,7 +59,8 @@ The tick loop runs at `TICK_RATE = 30` Hz on the server, which also patches stat
 | Sound effects + background music + mute | `client/src/audio/Sfx.ts` (all synthesized, no asset files; mute button / `M` key) |
 | Arena look (grass, 3D crate walls, bushes, gas poison, camera zoom) | `client/src/game/GameScene.ts` (`PALETTE`, `WALL_EXTRUDE`, `CAMERA_ZOOM`, `makeGrassTexture`/`drawWall`/`drawBush`/`drawPoison`) — all procedural; the old `client/public/tiles/*.jpg` masters in `art-generated/` are no longer loaded |
 | Lobby HTML / monster picker (portraits + stat bars) | `client/index.html` + `client/src/main.ts` + `client/src/style.css` |
-| Waiting room overlay (roster, session leaderboard, host Start button) | `client/src/game/WaitingRoom.ts` (DOM overlay, driven by `GameScene`); the `LOBBY` phase + `hostId` + `wins`/`totalKills` live server-side in `MatchRoom.ts` / `schema/` |
+| Waiting room overlay (roster, session leaderboard, host Start/bot buttons) | `client/src/game/WaitingRoom.ts` (DOM overlay, driven by `GameScene`); the `LOBBY` phase + `hostId` + `wins`/`totalKills` live server-side in `MatchRoom.ts` / `schema/` |
+| Bots (server AI players) — add/remove, behaviour | `server/src/rooms/MatchRoom.ts` (`addBot`/`removeBot`/`updateBots`, `Player.isBot`); host buttons in `WaitingRoom.ts` |
 | Monster looks (emoji, accent, blurb) + display stats | `client/src/game/monsters.ts` |
 
 Adding a new monster is mostly a row of numbers in `server/src/config.ts` (`MONSTERS` array) plus a look entry (with the display stats) in `client/src/game/monsters.ts` and its id in `MONSTER_ORDER`.
@@ -86,7 +87,9 @@ There is one Colyseus room type, `"match"`, registered with `.filterBy(["roomCod
 
 A room cycles `LOBBY → COUNTDOWN → PLAYING → ROUNDOVER → LOBBY …`. It opens in the **waiting room** (`LOBBY`): the **host** (first player to join; reassigned to the oldest remaining player if they leave — tracked by `hostId` on `MatchState`) starts the round with a `"start"` message; the server freezes the sim until then. After the winner banner (`ROUNDOVER`) it returns to `LOBBY` for the host to start the next round. Phase, time-left, alive count, winner name, `hostId`, and the safe-zone rectangle are all on `MatchState` and broadcast every tick.
 
-The client shows the waiting room as a DOM overlay (`client/src/game/WaitingRoom.ts`, driven by `GameScene` — shown while `phase === "lobby"`): a live roster (players appear as they join), a **session leaderboard** (cumulative `wins` + `totalKills` on `Player`, which persist across rounds — `respawn()` must not reset them), and a host-only Start button. To let *anyone* start instead of host-only, drop the `hostId` check in `MatchRoom`'s `"start"` handler.
+The client shows the waiting room as a DOM overlay (`client/src/game/WaitingRoom.ts`, driven by `GameScene` — shown while `phase === "lobby"`): a live roster (players appear as they join), a **session leaderboard** (cumulative `wins` + `totalKills` on `Player`, which persist across rounds — `respawn()` must not reset them), and host-only **Start** / **add-bot** / **remove-bot** buttons. To let *anyone* start instead of host-only, drop the `hostId` check in `MatchRoom`'s `"start"` handler.
+
+**Bots** are server-controlled `Player`s (`Player.isBot`) the host adds in the waiting room (`addBot`/`removeBot` messages, host+lobby only). They're full players keyed `bot-N` — they respawn, take damage, drop cubes, score on the leaderboard, and satisfy win conditions like anyone. `MatchRoom.updateBots()` runs each PLAYING tick *before* `simulatePlayers` and writes the **same intent fields** a client sends (`inputX/Y`, `aimX/Y`, `wantFire`/`wantSuper` with a zero `fireDir` so the existing auto-aim targets the nearest enemy), so bots flow through the identical simulation. Current AI: flee the closing poison, else engage the nearest enemy at ~70% attack range while strafing. Bots never become host (host reassignment skips them); the room auto-disposes when the last *human* (client) leaves, so bots never keep an empty room alive.
 
 ## Constraints to preserve
 

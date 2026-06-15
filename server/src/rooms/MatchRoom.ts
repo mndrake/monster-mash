@@ -47,6 +47,19 @@ import {
 /** A Player object also remembers its own MapSchema key (sessionId). */
 type KeyedPlayer = Player & { __key?: string };
 
+/** Names cycled through for bots, so a roster of them reads clearly. */
+const BOT_NAMES = [
+  "Bot Fang",
+  "Bot Claw",
+  "Bot Grim",
+  "Bot Hex",
+  "Bot Gore",
+  "Bot Snarl",
+  "Bot Maw",
+  "Bot Dread",
+  "Bot Rex",
+];
+
 /**
  * Discrete "this just happened" events the server broadcasts to clients for
  * juice (damage numbers, kill feed, explosions). These are MOMENTS, not state —
@@ -87,6 +100,8 @@ export class MatchRoom extends Room<MatchState> {
   private playStartAt = 0;
   /** Source of unique ids for projectiles and cubes. */
   private nextId = 1;
+  /** Source of unique keys for bots (bot-1, bot-2, …). */
+  private botSeq = 0;
 
   /** Static terrain for this room (blocking walls + hiding bushes). */
   private walls: Rect[] = [];
@@ -155,6 +170,18 @@ export class MatchRoom extends Room<MatchState> {
       if (this.state.phase !== PHASE.LOBBY) return;
       if (client.sessionId !== this.state.hostId) return;
       this.beginCountdown();
+    });
+
+    // Host-only, lobby-only: add / remove a bot (a server-controlled player).
+    this.onMessage("addBot", (client) => {
+      if (this.state.phase !== PHASE.LOBBY) return;
+      if (client.sessionId !== this.state.hostId) return;
+      this.addBot();
+    });
+    this.onMessage("removeBot", (client) => {
+      if (this.state.phase !== PHASE.LOBBY) return;
+      if (client.sessionId !== this.state.hostId) return;
+      this.removeBot();
     });
 
     // Hold a reserved seat longer than the 15s default. On a cold-started free
@@ -306,6 +333,7 @@ export class MatchRoom extends Room<MatchState> {
     }
 
     // ---- PLAYING ----
+    this.updateBots(); // write bot intent before the shared simulation runs
     this.simulatePlayers(dt);
     this.simulateProjectiles(dt);
     this.applyPoison(dt);
@@ -849,6 +877,122 @@ export class MatchRoom extends Room<MatchState> {
     return (p as KeyedPlayer).__key ?? "";
   }
 
+  // =========================================================================
+  //  Bots (server-controlled players the host adds in the waiting room)
+  // =========================================================================
+
+  /** Add one bot, if there's room. Host-only / lobby-only (checked by caller). */
+  private addBot() {
+    if (this.state.players.size >= MAX_PLAYERS) return;
+    const key = `bot-${++this.botSeq}`;
+    const p = new Player();
+    (p as KeyedPlayer).__key = key;
+    p.isBot = true;
+    p.monster = MONSTERS[Math.floor(Math.random() * MONSTERS.length)].id;
+    p.name = BOT_NAMES[(this.botSeq - 1) % BOT_NAMES.length];
+    p.color = PLAYER_COLORS[(this.state.players.size) % PLAYER_COLORS.length];
+    this.respawn(p);
+    this.state.players.set(key, p);
+    this.state.aliveCount = this.countAlive();
+    console.log(`Bot ${p.name} (${p.monster}) added. Players: ${this.state.players.size}`);
+  }
+
+  /** Remove the most-recently-added bot, if any. */
+  private removeBot() {
+    let lastBotKey: string | undefined;
+    this.state.players.forEach((p, key) => {
+      if (p.isBot) lastBotKey = key;
+    });
+    if (lastBotKey) {
+      this.state.players.delete(lastBotKey);
+      this.state.aliveCount = this.countAlive();
+    }
+  }
+
+  /**
+   * Drive every bot for this tick by writing the SAME intent fields a human
+   * client would send (move vector, aim, fire, super). simulatePlayers then runs
+   * them through the exact same simulation — so bots collide, reload, pick up
+   * cubes, and fire with auto-aim just like players. Behaviour: flee the poison,
+   * else engage the nearest enemy at a comfortable range while strafing.
+   */
+  private updateBots() {
+    this.state.players.forEach((p) => {
+      if (!p.isBot || !p.alive) return;
+      const type = monsterById(p.monster);
+
+      // Default: no intent this tick.
+      p.inputX = 0;
+      p.inputY = 0;
+      p.wantFire = false;
+      p.wantSuper = false;
+      p.fireDirX = 0; // 0 vector => fireMain auto-aims at the nearest enemy
+      p.fireDirY = 0;
+
+      // 1) Safety first: if we're outside (or near the edge of) the safe zone,
+      //    head for its center. Poison melts you fast.
+      const cx = (this.state.safeMinX + this.state.safeMaxX) / 2;
+      const cy = (this.state.safeMinY + this.state.safeMaxY) / 2;
+      const margin = 90;
+      const unsafe =
+        p.x < this.state.safeMinX + margin ||
+        p.x > this.state.safeMaxX - margin ||
+        p.y < this.state.safeMinY + margin ||
+        p.y > this.state.safeMaxY - margin;
+      if (unsafe) {
+        const dx = cx - p.x;
+        const dy = cy - p.y;
+        const d = Math.hypot(dx, dy) || 1;
+        p.inputX = dx / d;
+        p.inputY = dy / d;
+        return;
+      }
+
+      // 2) Engage the nearest enemy if one is reasonably close.
+      const target = this.nearestEnemy(p);
+      if (target) {
+        const tx = target.x - p.x;
+        const ty = target.y - p.y;
+        const dist = Math.hypot(tx, ty) || 1;
+        const ux = tx / dist;
+        const uy = ty / dist;
+
+        // Aim/face the target (auto-aim does the actual shot direction).
+        p.aimX = ux;
+        p.aimY = uy;
+        p.facing = Math.atan2(uy, ux);
+
+        // Keep around 70% of attack range: approach if far, back off if too
+        // close, strafe sideways otherwise so they're not sitting ducks.
+        const ideal = type.projectileRange * 0.7;
+        if (dist > ideal * 1.1) {
+          p.inputX = ux;
+          p.inputY = uy;
+        } else if (dist < ideal * 0.6) {
+          p.inputX = -ux;
+          p.inputY = -uy;
+        } else {
+          const sign = this.keyOf(p).charCodeAt(4) % 2 === 0 ? 1 : -1;
+          p.inputX = -uy * sign;
+          p.inputY = ux * sign;
+        }
+
+        // Fire when in range and loaded; unleash the super a bit closer in.
+        if (dist <= type.projectileRange && p.ammo >= 1) p.wantFire = true;
+        if (dist <= type.superRange * 0.9 && p.super >= 1) p.wantSuper = true;
+      } else {
+        // 3) Nobody around: drift toward the center to find the action.
+        const dx = cx - p.x;
+        const dy = cy - p.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if (d > 60) {
+          p.inputX = dx / d;
+          p.inputY = dy / d;
+        }
+      }
+    });
+  }
+
   onJoin(client: Client, options: { name?: string; monster?: string }) {
     const p = new Player();
     (p as KeyedPlayer).__key = client.sessionId;
@@ -879,11 +1023,14 @@ export class MatchRoom extends Room<MatchState> {
   onLeave(client: Client) {
     const wasHost = client.sessionId === this.state.hostId;
     this.state.players.delete(client.sessionId);
-    // If the host left, hand off to the oldest remaining player (MapSchema
-    // iterates in insertion order). Empty room → no host.
+    // If the host left, hand off to the oldest remaining HUMAN (a bot must never
+    // be host — it can't press start). No humans left → no host.
     if (wasHost) {
-      const next = this.state.players.keys().next();
-      this.state.hostId = next.done ? "" : next.value;
+      let next = "";
+      this.state.players.forEach((p, key) => {
+        if (!next && !p.isBot) next = key;
+      });
+      this.state.hostId = next;
     }
     this.state.aliveCount = this.countAlive();
     console.log(`${client.sessionId} left. Players: ${this.state.players.size}`);

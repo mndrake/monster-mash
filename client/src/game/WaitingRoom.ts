@@ -20,8 +20,11 @@ export class WaitingRoom {
   private startBtn: HTMLButtonElement;
   private hintEl: HTMLDivElement;
   private leaveBtn: HTMLButtonElement;
+  private botRow: HTMLDivElement;
   private onStartCb?: () => void;
   private onLeaveCb?: () => void;
+  private onAddBotCb?: () => void;
+  private onRemoveBotCb?: () => void;
   private shown = false;
 
   constructor(roomCode: string) {
@@ -34,6 +37,10 @@ export class WaitingRoom {
       `<div class="wr-code">Room code <b>${escapeHtml(roomCode)}</b></div>` +
       `<div class="wr-label">Players (<span class="wr-count">0</span>) · Standings</div>` +
       `<ol class="wr-list"></ol>` +
+      `<div class="wr-bots">` +
+      `<button type="button" class="wr-bot-remove">− Bot</button>` +
+      `<button type="button" class="wr-bot-add">+ Add bot</button>` +
+      `</div>` +
       `<button type="button" class="wr-start">Start game</button>` +
       `<div class="wr-hint">Waiting for the host to start…</div>` +
       `<button type="button" class="wr-leave">Leave room</button>` +
@@ -43,8 +50,15 @@ export class WaitingRoom {
     this.startBtn = this.el.querySelector(".wr-start") as HTMLButtonElement;
     this.hintEl = this.el.querySelector(".wr-hint") as HTMLDivElement;
     this.leaveBtn = this.el.querySelector(".wr-leave") as HTMLButtonElement;
+    this.botRow = this.el.querySelector(".wr-bots") as HTMLDivElement;
     this.startBtn.addEventListener("click", () => this.onStartCb?.());
     this.leaveBtn.addEventListener("click", () => this.onLeaveCb?.());
+    (this.el.querySelector(".wr-bot-add") as HTMLButtonElement).addEventListener("click", () =>
+      this.onAddBotCb?.(),
+    );
+    (this.el.querySelector(".wr-bot-remove") as HTMLButtonElement).addEventListener("click", () =>
+      this.onRemoveBotCb?.(),
+    );
     this.el.style.display = "none";
     document.body.appendChild(this.el);
   }
@@ -56,6 +70,14 @@ export class WaitingRoom {
   /** Leave the room and return to the main lobby (to start/join a new game). */
   onLeave(cb: () => void): void {
     this.onLeaveCb = cb;
+  }
+
+  /** Host-only: add / remove a bot. */
+  onAddBot(cb: () => void): void {
+    this.onAddBotCb = cb;
+  }
+  onRemoveBot(cb: () => void): void {
+    this.onRemoveBotCb = cb;
   }
 
   show(): void {
@@ -93,7 +115,8 @@ export class WaitingRoom {
         const isSelf = p.id === selfId;
         const tags =
           (isHost ? `<span class="wr-tag wr-host">👑 host</span>` : "") +
-          (isSelf ? `<span class="wr-tag wr-you">you</span>` : "");
+          (isSelf ? `<span class="wr-tag wr-you">you</span>` : "") +
+          (p.isBot ? `<span class="wr-tag wr-bot">BOT</span>` : "");
         return (
           `<li class="wr-row${isSelf ? " is-self" : ""}">` +
           `<span class="wr-emoji">${look.emoji}</span>` +
@@ -105,9 +128,10 @@ export class WaitingRoom {
       })
       .join("");
 
-    // Host sees the Start button; everyone else sees the waiting hint.
+    // Host sees the Start + bot buttons; everyone else sees the waiting hint.
     const isHost = selfId !== "" && selfId === hostId;
     this.startBtn.style.display = isHost ? "block" : "none";
+    this.botRow.style.display = isHost ? "flex" : "none";
     this.hintEl.style.display = isHost ? "none" : "block";
     this.startBtn.textContent =
       roster.length > 1 ? `Start game (${roster.length} players)` : "Start game";
@@ -176,6 +200,14 @@ function injectStyles(): void {
     }
     #waiting-room .wr-host { background: rgba(255, 209, 102, 0.22); color: #ffd166; }
     #waiting-room .wr-you { background: rgba(91, 140, 255, 0.3); color: #cdddff; }
+    #waiting-room .wr-bot { background: rgba(160, 160, 180, 0.25); color: #c7c7e0; letter-spacing: 1px; }
+    #waiting-room .wr-bots { display: flex; gap: 8px; margin-top: 8px; }
+    #waiting-room .wr-bots button {
+      flex: 1; padding: 10px; border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 10px; background: rgba(255, 255, 255, 0.06); color: #eaeaf2;
+      font: 600 14px/1 inherit; cursor: pointer;
+    }
+    #waiting-room .wr-bots button:active { transform: translateY(1px); }
     #waiting-room .wr-start {
       margin-top: 8px; padding: 14px; border: 0; border-radius: 12px;
       background: #5b8cff; color: #0b1020; font: 700 17px/1 inherit; cursor: pointer;

@@ -14,6 +14,8 @@ export class Player extends Schema {
   @type("string") color = "#ffffff";
   /** Which monster this player chose: "gnash" | "spit" | "brute". */
   @type("string") monster = "gnash";
+  /** True for a server-controlled bot (no client). The client tags it "BOT". */
+  @type("boolean") isBot = false;
 
   // ---- body (synced) ----
   @type("number") x = 0;

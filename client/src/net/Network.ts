@@ -23,6 +23,8 @@ export interface PlayerSnapshot {
   name: string;
   color: string;
   monster: string;
+  /** True for a server-controlled bot (shown with a "BOT" tag). */
+  isBot: boolean;
   facing: number;
   health: number;
   maxHealth: number;
@@ -228,6 +230,13 @@ export class Network {
   sendStart(): void {
     this.room?.send("start");
   }
+  /** Host-only: add / remove a bot in the waiting room. */
+  sendAddBot(): void {
+    this.room?.send("addBot");
+  }
+  sendRemoveBot(): void {
+    this.room?.send("removeBot");
+  }
 
   /** Are we the host (the player who can start rounds)? */
   get isHost(): boolean {
@@ -282,7 +291,7 @@ function playerSnap(
   id: string,
   p: {
     x: number; y: number; name: string; color: string; monster: string;
-    facing: number; health: number; maxHealth: number; ammo: number;
+    isBot: boolean; facing: number; health: number; maxHealth: number; ammo: number;
     ammoMax: number; super: number; cubes: number; alive: boolean;
     hidden: boolean; rank: number; kills: number; wins: number; totalKills: number;
   },
@@ -294,6 +303,7 @@ function playerSnap(
     name: p.name,
     color: p.color,
     monster: p.monster,
+    isBot: p.isBot,
     facing: p.facing,
     health: p.health,
     maxHealth: p.maxHealth,
