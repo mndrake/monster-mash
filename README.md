@@ -5,19 +5,22 @@ on the same wifi — a monster-themed take on Brawl Stars. No app store, no
 accounts, no payments. It installs to your phone's home screen as a fullscreen
 PWA.
 
-**Milestone 2 adds the brawl: a SHOWDOWN free-for-all.** Pick one of three
-monsters, drop into a shared arena, shoot the others, grab power cubes to grow
-stronger, and survive the closing poison until you're the **last monster
-standing**. Rounds run back-to-back (a quick "3… 2… 1…" countdown, a winner
-banner, then again) so nobody waits long.
+**It's a SHOWDOWN free-for-all.** Pick one of **six** monsters, drop into a shared
+arena, shoot the others, break boxes for power cubes, use the walls and bushes,
+and survive the closing poison gas until you're the **last monster standing**.
+Rounds run back-to-back (a quick "3… 2… 1…" countdown, a winner banner, then
+again) so nobody waits long.
 
-### The three monsters
+### The six monsters
 
 | Monster | Style | Feel |
 | --- | --- | --- |
 | 👹 **Gnash** | Fast melee biter | Fragile but quick — dash in, chomp, dash out. Super lunges forward with a triple bite. |
 | 👾 **Spit** | Mid-range marksman | Balanced. Super sprays a five-glob fan. |
 | 🐲 **Brute** | Slow tank | Huge health, heavy boulders. Super hurls one giant rock. |
+| 🦂 **Vex** | Long-range sniper | Longest reach, hits hard, but fragile and slow to fire. |
+| 🐡 **Spike** | Close-range shotgun | A wide 5-pellet fan that shreds up close; super dashes in and blasts. |
+| 👻 **Wisp** | Fast skirmisher | The quickest feet, a deep clip, rapid light shots. |
 
 ### Core mechanics (ported from Brawl Stars)
 
@@ -29,10 +32,15 @@ banner, then again) so nobody waits long.
   glowing SUPER button (or Space / right-click on desktop).
 - **Health + regen** — take damage and you're defeated at 0; avoid damage for a
   few seconds and health regenerates.
-- **Power cubes** — scattered pickups that raise your health and damage; defeated
-  monsters drop theirs to be looted.
-- **Closing poison** — after a grace period the safe area shrinks; standing
-  outside hurts (more and more), forcing everyone together for the finish.
+- **Terrain** — **walls** block movement *and* shots (slide along them);
+  **bushes** hide you when you're not firing or recently hit.
+- **Breakable boxes & power cubes** — shoot **boxes** to pop **power cubes**
+  (which raise your health + damage); defeated monsters also drop theirs to loot.
+- **Closing poison** — after a grace period the safe area shrinks and a wall of
+  gas creeps in; standing in it hurts (more and more), forcing the finish.
+- **Feel** — on-character ammo/super HUD, an aim indicator, damage numbers, a
+  kill feed, defeat/spawn FX, synthesized sound + music, and client-side movement
+  prediction so your own monster responds instantly.
 
 ---
 
@@ -47,7 +55,7 @@ draw what the server tells them.
  ┌──────────────────┐                      ┌────────────────────────────────┐
  │ joystick / keys   │   "input" {x,y}      │ stores your input vector        │
  │  ───────────────► │ ───────────────────► │                                 │
- │                   │                      │ every tick (20×/sec):           │
+ │                   │                      │ every tick (30×/sec):           │
  │                   │                      │   position += input × speed     │
  │ draw each player  │   state snapshot     │   (clamped to the arena)        │
  │  ◄─────────────── │ ◄─────────────────── │ broadcast new positions         │
@@ -59,14 +67,16 @@ draw what the server tells them.
 
 1. **Input** — the client reads the joystick/keys and sends a little vector
    `{ x, y }` (each between −1 and 1). It only sends when the input *changes*.
-2. **Tick** — 20 times a second the server moves every player by their last
+2. **Tick** — 30 times a second the server moves every player by their last
    input. The server owns the positions, so nobody can cheat by teleporting.
-3. **Snapshot** — Colyseus automatically broadcasts the changed state to every
-   client after each tick.
-4. **Interpolation** — the server only updates ~20×/sec, which would look
-   choppy. So each client *glides* every sprite toward its latest server
-   position a little each frame (~60×/sec). That smooth gliding is what removes
-   the teleporting/jitter.
+3. **Snapshot** — Colyseus broadcasts the changed state to every client after
+   each tick (the room's patch rate is set to 30 Hz to match).
+4. **Interpolation + prediction** — the server only updates ~30×/sec, which would
+   look choppy. *Other* players are *glided* toward their latest server position
+   each frame (~60×/sec). **Your own** monster is **client-side predicted** — it
+   moves the instant you press a direction (through the same wall/box collision
+   the server runs) and reconciles to the server underneath, so it feels
+   immediate while the server stays authoritative.
 
 **Combat is authoritative the same way.** Clients only send *intent* — "fire
 this direction", "use super". The server spawns the shots, moves them, decides
@@ -80,9 +90,9 @@ If you want to understand the netcode, read these (they're short and commented):
 
 | Step | File | What it does |
 | --- | --- | --- |
-| 1. Tuning | `server/src/config.ts` | All the knobs: the 3 monsters' stats, cube/poison/round settings. |
-| 2. Synced state | `server/src/schema/*.ts` | `Player`, `Projectile`, `PowerCube`, `MatchState` — the data shared with every client. |
-| 3. The match + tick | `server/src/rooms/MatchRoom.ts` | The whole authoritative 20 Hz loop: movement, shooting, damage, cubes, poison, rounds. |
+| 1. Tuning | `server/src/config.ts` | All the knobs: the 6 monsters' stats, cube/box/poison/round settings, tick rate. |
+| 2. Synced state | `server/src/schema/*.ts` | `Player`, `Projectile`, `PowerCube`, `Box`, `MatchState` — the data shared with every client. |
+| 3. The match + tick | `server/src/rooms/MatchRoom.ts` | The whole authoritative 30 Hz loop: movement, shooting, damage, cubes, boxes, poison, rounds. |
 | 4. Server bootstrap | `server/src/index.ts` | Starts Colyseus; `filterBy(["roomCode"])` is how room codes work. |
 | 5. Transport boundary | `client/src/net/Network.ts` | The **only** client file that knows about Colyseus. Swap backends here. |
 | 6. Input | `client/src/input/Controls.ts` | Twin-stick joysticks + keyboard → move / aim / fire / super intent. |
@@ -99,18 +109,21 @@ If you want to understand the netcode, read these (they're short and commented):
 │   ├── index.html        the lobby (plain HTML) + the game canvas
 │   ├── vite.config.ts    dev server + PWA manifest/service worker
 │   └── src/
-│       ├── main.ts       lobby logic (incl. monster picker) → boots Phaser
-│       ├── config.ts     server URL + interpolation settings
-│       ├── game/         scene, monster/projectile/cube views, monster looks
+│       ├── main.ts       lobby logic (monster picker w/ stat bars) → boots Phaser
+│       ├── config.ts     server URL + interpolation/prediction settings
+│       ├── game/         scene, player/projectile/cube/box views, monster looks,
+│       │                 client collision (for prediction)
+│       ├── audio/        synthesized sound effects + music (no asset files)
 │       ├── net/          Colyseus client wrapper (the transport boundary)
 │       ├── input/        twin-stick joysticks + keyboard
 │       └── util/         room-code generator
 └── server/               Colyseus authoritative server (Node)
     └── src/
         ├── index.ts      server bootstrap
-        ├── config.ts     monsters' stats, cube/poison/round tuning
+        ├── config.ts     monsters' stats, cube/box/poison/round tuning, tick rate
+        ├── geom.ts       pure collision math (+ geom.test.ts)
         ├── rooms/        MatchRoom: the full authoritative Showdown loop
-        └── schema/       synced state (players, projectiles, cubes, match)
+        └── schema/       synced state (players, projectiles, cubes, boxes, match)
 ```
 
 ---
@@ -146,16 +159,17 @@ is pre-filled so you can jump straight in.
 | **Touch** | left joystick | right joystick — *release* to fire (tap = quick auto-aim shot) | glowing **SUPER** button |
 | **Desktop** | WASD / arrows | mouse aim, **left-click** to fire | **Space** or **right-click** |
 
-Walk over **power cubes** to grow stronger, and stay inside the bright safe box —
-the **poison** outside it closes in and hurts more over time.
+Shoot **boxes** to pop **power cubes** and grow stronger, and stay ahead of the
+**poison gas** — it creeps in from the edges and hurts more the longer you're in it.
 
 ### Test with two browser tabs (same computer)
 
 1. Open http://localhost:5173 in **two tabs** (or two windows).
 2. Pick a monster, use the **same room code** in both, then Join in each.
 3. With 2+ players the round begins after a short countdown. Drive one with
-   **WASD**, aim with the **mouse**, and **click** to shoot the other tab. The
-   HUD (top-left) shows the room code, monsters left, and your health/ammo/super.
+   **WASD**, aim with the **mouse**, and **click** to shoot the other tab. Ammo
+   and super show on your monster; the top-left corner shows the room code,
+   monsters left, cubes, and kills.
 
 ### Play on your LAN (phones & tablets on the same wifi)
 
@@ -206,11 +220,12 @@ option. It launches fullscreen like a native app. (A production build via
   keeps their network format compatible. (The newer server `0.17` line pairs
   with a `@colyseus/schema@4` client that isn't published as stable yet.)
   Per the brief, rendering uses **Phaser 3** (not the newer Phaser 4).
-- **Interpolation, not prediction:** every sprite — including your own — glides
-  toward the latest server position (`PlayerView.interpolate`). It's the simplest
-  thing that looks smooth and is easy to read. On a LAN the input lag is tiny.
-  Client-side *prediction* for the local player is a sensible later upgrade; it
-  would live in `GameScene`/`Network` and wouldn't change the server.
+- **Interpolation + local prediction:** *other* players glide toward their latest
+  server position (`PlayerView.interpolate`). *Your own* monster is **predicted**
+  client-side (`GameScene.predictLocal` + `client/src/game/collision.ts`, a mirror
+  of the server's `geom.ts`): it moves instantly from your input through the same
+  collision and reconciles to the server underneath. The server stays the single
+  source of truth — prediction only affects how your local monster is drawn.
 - **Projectiles as a fan:** every attack — single shot or multi-pellet super — is
   the same `spawnSpread()` helper with a different pellet count and angle, so
   adding a new monster is mostly a row of numbers in `server/src/config.ts`.
@@ -229,9 +244,16 @@ option. It launches fullscreen like a native app. (A production build via
 - **Icons** are generated programmatically (`client/scripts/make-icons.mjs`)
   since this environment had no image tools — swap in real art anytime.
 
-## Out of scope for Milestone 2 (coming later)
+## Done so far / what's next
 
-Walls/cover and bushes to hide in, team modes (Gem Grab / Brawl Ball), per-monster
-unlockable abilities (gadgets/star powers), pings/emotes, sound, accounts,
-persistence, and art polish (the monsters are emoji for now — swap in real art
-anytime). See the roadmap in the kickoff brief (M3–M5).
+**Done:** the Showdown loop, three then **six** monsters, **terrain** (walls +
+bushes), **breakable boxes**, a bright procedural Brawl-Stars look (grass, 3D
+crate walls, gas-cloud poison), the feedback layer (on-character HUD, aim
+indicator, damage numbers, kill feed, defeat/spawn FX), synthesized **sound +
+music**, **client-side prediction**, and a built-out monster picker. The
+per-milestone design notes live in [`docs/`](docs/).
+
+**Not yet:** per-monster **gadgets / star powers** (a limited-use active + a
+passive), **team modes** (Gem Grab / Brawl Ball / Bounty), respawns, pings/emotes,
+accounts/persistence, and real art (the monsters are emoji for now — swap in real
+art anytime). See [`docs/brawl-stars-roadmap.md`](docs/brawl-stars-roadmap.md).

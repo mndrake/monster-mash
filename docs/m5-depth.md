@@ -1,5 +1,12 @@
 # M5 — Gameplay depth (scope)
 
+> **Status: mostly SHIPPED.** Breakable boxes (PR-A) merged. Beyond this original
+> plan we also shipped smoother movement (30 Hz + client-side prediction),
+> animated poison clouds, the stuck-joystick fix, and **three new monsters + a
+> built-out selection screen** (this took PR-C's "more monsters" further). The
+> one item from this doc **not** done is **gadgets / star powers** (PR-B here) —
+> now slated for a later milestone. Kept for design history.
+
 After M4 made the game *feel* like Brawl Stars, M5 adds Showdown *depth*. All of
 this is **server-authoritative gameplay** (unlike M4, which was mostly client
 presentation), so each slice changes `server/src/` and mirrors the minimum to the

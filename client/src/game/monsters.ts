@@ -1,9 +1,10 @@
 /**
- * How each monster LOOKS on the client. The server owns all the stats (health,
- * speed, damage); here we only care about drawing. The `radius` matches the
- * server's collision radius so the body and hit area line up.
+ * How each monster LOOKS on the client, plus a few DISPLAY-ONLY stats for the
+ * lobby picker. The server owns the real simulation values; the numbers here
+ * mirror server/src/config.ts (same accepted duplication as maps.ts) and are
+ * used for the aim indicator, movement prediction, and the picker's stat bars.
  *
- * Keep the ids in sync with server/src/config.ts MONSTERS.
+ * Keep the ids and numbers in sync with server/src/config.ts MONSTERS.
  */
 export interface MonsterLook {
   id: string;
@@ -12,23 +13,18 @@ export interface MonsterLook {
   emoji: string;
   /** Body radius in world units (matches the server's collision radius). */
   radius: number;
-  /** Accent color, used by the lobby picker. */
+  /** Accent color, used by the lobby picker and the monster's ring. */
   accent: string;
   /** One-line description for the lobby picker. */
   blurb: string;
-  /**
-   * Main-attack travel range in world units — DISPLAY ONLY, used to size the aim
-   * indicator. This mirrors `projectileRange` in server/src/config.ts (same
-   * accepted duplication as maps.ts); keep it roughly in sync. The server still
-   * owns the real range.
-   */
+  /** Main-attack range in world units — sizes the aim indicator (mirrors `projectileRange`). */
   range: number;
-  /**
-   * Move speed in world units/sec — mirrors `speed` in server/src/config.ts.
-   * Used ONLY for local-player movement prediction (see collision.ts); the
-   * server stays authoritative. Keep in sync with the server value.
-   */
+  /** Move speed in world units/sec — used for local movement prediction (mirrors `speed`). */
   speed: number;
+  /** Max health — DISPLAY ONLY, for the picker stat bar (mirrors `maxHealth`). */
+  health: number;
+  /** Effective burst damage (per-pellet × pellets) — DISPLAY ONLY, for the picker. */
+  damage: number;
 }
 
 export const MONSTER_LOOKS: Record<string, MonsterLook> = {
@@ -41,6 +37,8 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     blurb: "Fast melee biter. Fragile — dash in, chomp, dash out.",
     range: 250,
     speed: 360,
+    health: 4400,
+    damage: 920,
   },
   spit: {
     id: "spit",
@@ -51,6 +49,8 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     blurb: "Mid-range marksman. Super sprays a five-glob fan.",
     range: 640,
     speed: 320,
+    health: 3000,
+    damage: 760,
   },
   brute: {
     id: "brute",
@@ -61,11 +61,49 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     blurb: "Slow tank. Huge health, heavy boulders that hit hard.",
     range: 400,
     speed: 250,
+    health: 6200,
+    damage: 1320,
+  },
+  vex: {
+    id: "vex",
+    name: "Vex",
+    emoji: "🦂",
+    radius: 19,
+    accent: "#ffd740",
+    blurb: "Long-range sniper. Reaches anywhere, but fragile and slow to fire.",
+    range: 900,
+    speed: 300,
+    health: 2800,
+    damage: 1120,
+  },
+  spike: {
+    id: "spike",
+    name: "Spike",
+    emoji: "🐡",
+    radius: 24,
+    accent: "#ff6e40",
+    blurb: "Close-range shotgun. A wide pellet fan that shreds up close.",
+    range: 300,
+    speed: 300,
+    health: 4800,
+    damage: 1800,
+  },
+  wisp: {
+    id: "wisp",
+    name: "Wisp",
+    emoji: "👻",
+    radius: 18,
+    accent: "#b2ff59",
+    blurb: "Fast skirmisher. Rapid light shots and the quickest feet.",
+    range: 520,
+    speed: 380,
+    health: 3200,
+    damage: 480,
   },
 };
 
 /** The order monsters appear in the lobby picker. */
-export const MONSTER_ORDER = ["gnash", "spit", "brute"];
+export const MONSTER_ORDER = ["gnash", "spit", "brute", "vex", "spike", "wisp"];
 
 export function lookOf(id: string): MonsterLook {
   return MONSTER_LOOKS[id] ?? MONSTER_LOOKS.gnash;

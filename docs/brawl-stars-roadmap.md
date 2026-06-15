@@ -52,24 +52,29 @@ super-ready "ding." ([SFX set](https://github.com/Henrylq/Brawl-Stars-SFX), [VFX
 
 ## 2. What we already have (mapped to the above)
 
+_Updated after M4 (juice/feel) and M5 (boxes, movement, poison clouds, monsters)._
+
 | Brawl Stars concept | Us today |
 | --- | --- |
-| Twin-stick + super button | ✅ Controls.ts (floating sticks, quick-fire on tap) |
+| Twin-stick + super button | ✅ Controls.ts (floating sticks, quick-fire, stuck-stick watchdog) |
 | Main attack + ammo + reload | ✅ per-monster ammo/reload/cooldown |
-| Super charged by hits + dash | ✅ super meter; Gnash lunges on super |
-| Power cubes (+hp/+dmg) | ⚠️ scattered at round start only — no boxes, no drop-on-kill |
-| Closing poison zone w/ ramp | ✅ shrinking safe rect, ramping DPS |
+| Super charged by hits + dash | ✅ super meter; Gnash & Spike lunge on super |
+| Power cubes from boxes + kills | ✅ breakable boxes (HP, block move+shots) drop cubes; kills drop too |
+| Closing poison zone w/ ramp | ✅ shrinking safe rect, ramping DPS, rendered as animated gas clouds |
 | Health regen out of combat | ✅ |
 | Walls (block move+shots) + bushes (hide) | ✅ terrain w/ collision; BS-style art |
-| Bright cartoon look, extruded walls, zoom | ✅ (just shipped) |
-| Hit-flash / muzzle flash / shot glow / shake | ✅ (just shipped) |
+| Bright cartoon look, extruded walls, zoom | ✅ |
+| Hit-flash / muzzle flash / shot glow / shake | ✅ |
+| On-character HUD (ammo pips, super ring) | ✅ |
+| Damage numbers / kill feed / defeat & spawn FX | ✅ (server `fx` event channel) |
+| Aim trajectory/shape indicator | ✅ (dotted aim line, red when out of ammo) |
+| Audio (SFX + music) | ✅ synthesized, zero-asset; mute toggle. Voice/announcer ❌ |
+| Smooth motion (client prediction) | ✅ 30 Hz + local-player prediction |
+| Roster + character select | ✅ 6 monsters, picker with stat bars |
 | FFA last-monster-standing, continuous rounds | ✅ |
 | Gadgets / Star Powers / Hypercharges | ❌ none |
 | Teams / Duo / respawns / other modes | ❌ FFA only |
-| Audio (SFX, voice, announcer, music) | ❌ **silent** |
-| On-character HUD (ammo pips, super ring) | ❌ top-left text only |
-| Damage numbers / kill feed / defeat & spawn FX | ❌ |
-| Aim trajectory/shape indicator | ❌ (server auto-aims; nothing drawn) |
+| Voice lines / announcer | ❌ (TTS source blocked — see audio README) |
 
 ---
 

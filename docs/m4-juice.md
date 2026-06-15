@@ -1,5 +1,10 @@
 # M4 — Juice & Feedback (scope)
 
+> **Status: SHIPPED.** All four PRs (event channel + damage numbers/sparks,
+> defeat/spawn FX, on-character HUD + aim indicator, audio + kill feed, plus the
+> background-music/mute follow-up) are merged. This doc is the original plan,
+> kept for design history.
+
 Goal: make the game *feel* like Brawl Stars without changing how it plays. No
 balance changes, no new modes. Almost everything here is **client presentation**;
 the one piece of server work is a small **combat-event channel** that the rest of
