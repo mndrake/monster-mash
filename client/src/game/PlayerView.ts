@@ -47,6 +47,26 @@ export class PlayerView {
   /** Counts down while the hit-flash tint is showing. */
   private flashUntil = 0;
 
+  // ---- procedural animation (PR-G) ----
+  // attach() is the SINGLE owner of the emoji/disc transform, driven by these
+  // decaying impulses + smoothed movement, so nothing fights a tween.
+  /** One-shot impulses (0..1), decayed each frame: fire recoil / super pop / hurt punch. */
+  private recoil = 0;
+  private pop = 0;
+  private hitPunch = 0;
+  /** Smoothed normalized move speed [0..1] and the horizontal lean angle. */
+  private speedNorm = 0;
+  private lean = 0;
+  /** Edge-detect baselines for firing (ammo drop) and super cast (meter drop). */
+  private prevAmmo: number;
+  private prevSuper: number;
+  /** While `now < spawnUntil` the spawn-in tween owns scale — attach() won't fight it. */
+  private spawnUntil = 0;
+  /** Monster top speed (u/s), to normalize movement for lean + squash. */
+  private readonly maxSpeed: number;
+  /** Clock of the last attach(), for framerate-independent decay/smoothing. */
+  private lastNow = 0;
+
   /** This monster's accent color as a number (for explosions etc.). */
   get tintColor(): number {
     return this.colorNum;
@@ -60,10 +80,14 @@ export class PlayerView {
     this.targetY = player.y;
     this.prevHealth = player.health;
     this.prevAlive = player.alive;
+    this.prevAmmo = player.ammo;
+    this.prevSuper = player.super;
+    this.lastNow = performance.now();
     this.bobPhase = (player.id.charCodeAt(0) || 0) * 0.7;
 
     const look = lookOf(player.monster);
     this.radius = look.radius;
+    this.maxSpeed = look.speed;
     this.colorNum = Phaser.Display.Color.HexStringToColor(player.color).color;
 
     // Soft contact shadow on the ground beneath the monster.
@@ -124,6 +148,8 @@ export class PlayerView {
 
   /** Quick scale-up "drop in" when a monster (re)spawns. */
   private playSpawnIn(): void {
+    // Hand scale to this tween for its duration; attach() backs off until then.
+    this.spawnUntil = performance.now() + 340;
     for (const obj of [this.shadow, this.rim, this.body, this.emoji]) {
       obj.setScale(0);
       this.scene.tweens.add({ targets: obj, scale: 1, duration: 320, ease: "Back.easeOut" });
@@ -143,14 +169,18 @@ export class PlayerView {
     if (player.alive && player.health < this.prevHealth - 1) {
       this.flashUntil = performance.now() + 130;
       this.emoji.setTint(0xff5252);
-      this.scene.tweens.add({
-        targets: this.emoji,
-        scale: { from: 1.25, to: 1 },
-        duration: 160,
-        ease: "Quad.easeOut",
-      });
+      this.hitPunch = 1; // scale punch (driven in attach, not a tween)
     }
     this.prevHealth = player.health;
+
+    // Fired a shot: ammo stepped down (a reload/respawn is an INCREASE → no recoil).
+    if (player.alive && player.ammo < this.prevAmmo - 0.5) this.recoil = 1;
+    // Cast the super: the meter dropped from full while alive.
+    if (player.alive && this.prevSuper >= 1 && player.super < 1) this.pop = 1;
+    // Update the edge-detect baselines UNCONDITIONALLY — this view persists across
+    // rounds, so a stale prevSuper would mis-fire a super pop on the next spawn.
+    this.prevAmmo = player.ammo;
+    this.prevSuper = player.super;
     // Respawn (defeated -> alive again at round start): pop back in.
     if (player.alive && !this.prevAlive) this.playSpawnIn();
     this.prevAlive = player.alive;
@@ -224,23 +254,59 @@ export class PlayerView {
 
   /** Move the body to (x, y) and bring every attached bit along with it. */
   private attach(x: number, y: number): void {
+    const now = performance.now();
+    let dt = (now - this.lastNow) / 1000;
+    this.lastNow = now;
+    if (!(dt > 0) || dt > 0.1) dt = 1 / 60; // guard first frame / tab-refocus hitch
+    const alive = this.snap.alive;
+
+    // Per-frame movement (drawn-position delta) → a smoothed speed [0..1] and a
+    // horizontal lean. BOTH are clamped against the monster's top speed, so the
+    // local player's predicted SNAP (super dash / respawn) can't pop a one-frame
+    // distortion — the spike just clips to "max" and is invisible.
+    const vx = (x - this.body.x) / dt;
+    const speed = alive ? Phaser.Math.Clamp(Math.hypot(x - this.body.x, y - this.body.y) / dt / this.maxSpeed, 0, 1) : 0;
+    const leanTarget = alive ? Phaser.Math.Clamp(vx / this.maxSpeed, -1, 1) * 0.26 : 0;
+    const k = Math.min(1, dt * 12); // smoothing toward the targets
+    this.speedNorm += (speed - this.speedNorm) * k;
+    this.lean += (leanTarget - this.lean) * k;
+
+    // Decay the one-shot impulses (framerate-independent).
+    const decay = Math.exp(-9 * dt);
+    this.recoil *= decay;
+    this.pop *= decay;
+    this.hitPunch *= decay;
+
     this.body.setPosition(x, y);
     this.rim.setPosition(x, y);
     this.shadow.setPosition(x, y + this.radius * 0.62);
 
-    // The emoji hovers above the ring with a gentle bob — the shadow stays put,
-    // selling a little bit of lift. Living monsters only.
-    const bob = this.snap.alive ? Math.sin(performance.now() / 320 + this.bobPhase) * 3 : 0;
-    this.emoji.setPosition(x, y + bob);
+    // The emoji hovers above the ring with a gentle bob that grows while moving
+    // (a run-cycle lilt); the shadow stays put, selling the lift. A fresh shot
+    // kicks it back opposite its facing for a beat (recoil).
+    const f = this.snap.facing;
+    const bob = alive ? Math.sin(now / 300 + this.bobPhase) * (3 + this.speedNorm * 3.5) : 0;
+    const kick = this.recoil * 7;
+    this.emoji.setPosition(x - Math.cos(f) * kick, y + bob - Math.sin(f) * kick);
+    this.emoji.setRotation(this.lean);
+
+    // Scale: super POP + hurt PUNCH (one-shots) combined with a move squash &
+    // stretch — but the spawn-in tween owns scale for its window, so back off then.
+    if (now >= this.spawnUntil) {
+      const grow = 1 + this.pop * 0.5 + this.hitPunch * 0.28;
+      this.emoji.setScale(grow * (1 + this.speedNorm * 0.12), grow * (1 - this.speedNorm * 0.1));
+      const discPop = 1 + this.pop * 0.32;
+      this.body.setScale(discPop);
+      this.rim.setScale(discPop);
+    }
 
     // Clear the hit-flash tint once it has elapsed.
-    if (this.flashUntil && performance.now() > this.flashUntil) {
+    if (this.flashUntil && now > this.flashUntil) {
       this.emoji.clearTint();
       this.flashUntil = 0;
     }
 
     // Aim wedge sits on the rim in the facing direction.
-    const f = this.snap.facing;
     this.pointer.setPosition(x + Math.cos(f) * (this.radius + 6), y + Math.sin(f) * (this.radius + 6));
 
     this.label.setPosition(x, y - this.radius - 26);
