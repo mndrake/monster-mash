@@ -131,6 +131,8 @@ export class GameScene extends Phaser.Scene {
   private prevCubes = 0;
   private prevCountdown = -1;
   private prevPhase = "";
+  /** Local player alive last frame — drives the "spawn" voice line on false→true. */
+  private prevAlive = false;
 
   // A DOM overlay shown while connecting (robust on mobile, no canvas needed).
   private statusEl?: HTMLElement;
@@ -606,6 +608,10 @@ export class GameScene extends Phaser.Scene {
   private onKO(k: KOEvent) {
     const selfInvolved = k.victimId === this.net.selfId || k.killerId === this.net.selfId;
     if (selfInvolved || this.nearSelf(k.x, k.y, 700)) this.sfx.defeat(k.victimId === this.net.selfId);
+    // Voice line for the local player only (one voice at a time): a takedown bark
+    // when you KO someone else, a defeated bark when you go down.
+    if (k.victimId === this.net.selfId) this.sfx.voice(this.myMonster(), "defeated");
+    else if (k.killerId === this.net.selfId) this.sfx.voice(this.myMonster(), "takedown");
     this.addKillFeed(k);
 
     const color = this.players.get(k.victimId)?.tintColor ?? 0xffffff;
@@ -1054,7 +1060,15 @@ export class GameScene extends Phaser.Scene {
     // Super just finished charging.
     const ready = !!me?.alive && (me?.super ?? 0) >= 1;
     if (ready && !this.prevSuperReady) this.sfx.superReady();
+    // Super just spent: it was ready and the meter dropped while still alive
+    // (death drops `alive`, so that's excluded) → the local player cast it.
+    if (!ready && this.prevSuperReady && me?.alive) this.sfx.voice(this.myMonster(), "super");
     this.prevSuperReady = ready;
+
+    // We just spawned into the round (local alive false → true).
+    const alive = !!me?.alive;
+    if (alive && !this.prevAlive) this.sfx.voice(this.myMonster(), "spawn");
+    this.prevAlive = alive;
 
     // We picked up a power cube (our own count went up).
     const cubes = me?.cubes ?? 0;
@@ -1074,11 +1088,21 @@ export class GameScene extends Phaser.Scene {
 
     // On a phase change: win/lose sting, and run the music bed during PLAYING.
     if (m.phase !== this.prevPhase) {
-      if (m.phase === "roundover") this.sfx.sting(!!me && me.rank === 1);
+      if (m.phase === "roundover") {
+        const won = !!me && me.rank === 1;
+        this.sfx.sting(won);
+        // Winner gets a victory taunt (the clean, non-spammy taunt trigger).
+        if (won) this.sfx.voice(this.myMonster(), "taunt");
+      }
       if (m.phase === "playing") this.sfx.startMusic();
       else this.sfx.stopMusic();
       this.prevPhase = m.phase;
     }
+  }
+
+  /** The local player's monster id (for voice lines); falls back to the picked one. */
+  private myMonster(): string {
+    return this.net.self?.monster ?? this.monster;
   }
 
   /** Add one line to the top-right kill feed (worded from your perspective). */

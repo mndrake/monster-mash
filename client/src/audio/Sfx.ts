@@ -235,4 +235,40 @@ export class Sfx {
       this.blip(f, 0.22, { type: win ? "triangle" : "sawtooth", gain: 0.26, delay: i * 0.12 }),
     );
   }
+
+  // --- character voice lines -------------------------------------------------
+  // Unlike everything above (synthesized), these are baked TTS clips under
+  // client/public/voice/<monster>/<event>.mp3. Fired ONLY for the local player
+  // (see GameScene call sites), so at most one line plays at a time: a new line
+  // interrupts the previous, and a short debounce stops double-triggers.
+
+  /** Single reused element so a new line cuts off the old one. */
+  private voiceEl?: HTMLAudioElement;
+  /** ctx-independent clock for the voice debounce. */
+  private lastVoiceAt = -1;
+
+  /**
+   * Play a character voice line. `event` is one of spawn / super / takedown /
+   * defeated / taunt; takedown + taunt have `-a`/`-b` variants picked at random.
+   * Honors the mute toggle (`enabled`) and a per-trigger debounce.
+   */
+  voice(monster: string, event: "spawn" | "super" | "takedown" | "defeated" | "taunt"): void {
+    if (!this.enabled) return;
+    const now = typeof performance !== "undefined" ? performance.now() : 0;
+    if (now - this.lastVoiceAt < 400) return;
+    this.lastVoiceAt = now;
+    const variant = event === "takedown" || event === "taunt" ? (Math.random() < 0.5 ? "-a" : "-b") : "";
+    const src = `${import.meta.env.BASE_URL}voice/${monster}/${event}${variant}.mp3`;
+    try {
+      const el = this.voiceEl ?? (this.voiceEl = new Audio());
+      el.pause();
+      el.src = src;
+      el.volume = 0.95;
+      void el.play().catch(() => {
+        /* autoplay/decoding blocked — best effort, never throws into the game */
+      });
+    } catch {
+      /* no HTMLAudioElement — silently skip */
+    }
+  }
 }
