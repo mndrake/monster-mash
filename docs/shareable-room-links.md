@@ -1,7 +1,9 @@
 # Shareable room links (room code in the URL)
 
-> **Status: PLANNED.** Small, self-contained client feature (no server changes).
-> Independent of the M8 gameplay work — can ship any time.
+> **Status: SHIPPED.** `?room=CODE` (and `#CODE`) pre-fills the lobby; a 🔗
+> copy-link button copies `origin + ?room=CODE`; join writes the code to the URL
+> via `history.replaceState`. Codes normalized via `normalizeRoomCode` in
+> `client/src/util/roomCode.ts`. Client-only, no server changes.
 
 ## Goal
 Let a host send a friend a link like `https://<client>/?room=ABCD` (or

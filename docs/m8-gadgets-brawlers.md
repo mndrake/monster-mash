@@ -202,10 +202,14 @@ wording there before generating audio.
   `Projectile` schema; `ProjectileView` draws a themed procedural shape per
   monster (bolt/droplet/fang oriented to travel; leaf/boulder/tooth spun), fill
   keeps the owner color. Procedural-only (no sprite assets needed).
-- **PR-G — Player animation.** ✅ SHIPPED (Stage 1, procedural/zero-asset):
-  lean + speed-scaled bob + squash/stretch, fire recoil, super pop, hurt punch —
-  all driven from a single `attach()` transform owner. **Stage 2** (generated
-  walk/attack sprite frames) deferred to M9.
+- **PR-G — Player animation.** ✅ SHIPPED. Stage 1 (procedural/zero-asset): lean
+  + speed-scaled bob + squash/stretch, fire recoil, super pop, hurt punch, all
+  from a single `attach()` transform owner. **Stage 2** ✅ also shipped: real
+  generated creature sprites per monster (gptimage → magenta chroma → bake-time
+  flood-fill key → transparent PNG in `client/public/brawlers/`), replacing the
+  emoji body, driven by the Stage-1 motion + a directional flip; a colored ground
+  ring keeps per-player ID. (A true walk-cycle sprite sheet was skipped —
+  txt2img can't keep frames consistent; procedural motion covers it.)
 
 Order: C and D are independent of the visual PRs. E is a quick follow-on to the
 shipped gadget system. F and G are the bigger visual lift (G's sprite stage may
