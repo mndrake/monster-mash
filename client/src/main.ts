@@ -96,11 +96,15 @@ monstersEl.insertAdjacentElement("afterend", gadgetWrap);
 function renderGadgets(id: string) {
   const g = lookOf(id).gadgets;
   gadgetWrap.innerHTML =
-    `<div class="gp-label">Gadget</div><div class="gp-row">` +
+    `<div class="gp-label">Gadget — pick one</div><div class="gp-row">` +
     g
       .map(
-        (name, i) =>
-          `<button type="button" class="gp-btn${i === chosenGadget ? " selected" : ""}" data-i="${i}">${name}</button>`,
+        (gad, i) =>
+          `<button type="button" class="gp-btn${i === chosenGadget ? " selected" : ""}" data-i="${i}">` +
+          `<img class="gp-icon" src="${import.meta.env.BASE_URL}gadgets/${gad.id}.png" alt="" draggable="false" />` +
+          `<span class="gp-name">${gad.name}</span>` +
+          `<span class="gp-desc">${gad.desc}</span>` +
+          `</button>`,
       )
       .join("") +
     `</div>`;

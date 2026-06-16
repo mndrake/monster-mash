@@ -107,6 +107,9 @@ export class Controls {
     });
 
     // ---- GADGET button (below the super button) ----
+    // Holds an <img> for the chosen gadget's icon (set via setGadgetIcon). The
+    // icon is a child element so the `.ready` glow on the button itself doesn't
+    // clobber it; a "GADGET" text fallback shows until/unless an icon loads.
     this.gadgetButton = document.createElement("button");
     this.gadgetButton.id = "gadget-btn";
     this.gadgetButton.textContent = "GADGET";
@@ -245,6 +248,20 @@ export class Controls {
   /** Let GameScene light up the Gadget button when it's off cooldown. */
   setGadgetReady(ready: boolean): void {
     this.gadgetButton.classList.toggle("ready", ready);
+  }
+
+  /** Show the chosen gadget's icon on the GADGET button face. */
+  setGadgetIcon(gadgetId: string): void {
+    const img = document.createElement("img");
+    img.className = "gadget-icon";
+    img.alt = "";
+    img.draggable = false;
+    img.src = `${import.meta.env.BASE_URL}gadgets/${gadgetId}.png`;
+    // Replace the "GADGET" text fallback with the icon once it's ready.
+    img.addEventListener("load", () => {
+      this.gadgetButton.textContent = "";
+      this.gadgetButton.appendChild(img);
+    });
   }
 
   /** Remove the joysticks + zones + button (called when leaving the game). */

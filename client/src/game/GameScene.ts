@@ -187,6 +187,8 @@ export class GameScene extends Phaser.Scene {
       onSuper: (d) => this.aliveSelf() && this.net.sendSuper(d.x, d.y),
       onGadget: (d) => this.aliveSelf() && this.net.sendGadget(d.x, d.y),
     });
+    // Put the chosen gadget's icon on the GADGET button face.
+    this.controls.setGadgetIcon(lookOf(this.monster).gadgets[data.gadget]?.id ?? "");
 
     // Refit the camera zoom when the canvas resizes (phone rotation, window
     // resize) so the visible slice of the arena stays sensible.

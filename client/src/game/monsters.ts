@@ -25,8 +25,20 @@ export interface MonsterLook {
   health: number;
   /** Effective burst damage (per-pellet × pellets) — DISPLAY ONLY, for the picker. */
   damage: number;
-  /** The two gadget names (mirrors server `gadgets`) — for the lobby chooser. */
-  gadgets: [string, string];
+  /** The two gadgets the player picks between (mirrors server `gadgets`). */
+  gadgets: [GadgetLook, GadgetLook];
+}
+
+/**
+ * Display info for one gadget in the lobby chooser + the in-game GADGET button.
+ * `id` matches the server `GadgetDef.id` (and the icon at
+ * `client/public/gadgets/<id>.png`); `desc` is client-only display text, like
+ * `blurb` — the server never needs it.
+ */
+export interface GadgetLook {
+  id: string;
+  name: string;
+  desc: string;
 }
 
 export const MONSTER_LOOKS: Record<string, MonsterLook> = {
@@ -41,7 +53,10 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     speed: 360,
     health: 4400,
     damage: 920,
-    gadgets: ["Dash", "Frenzy"],
+    gadgets: [
+      { id: "dash", name: "Dash", desc: "Burst forward with a quick speed boost to close or escape." },
+      { id: "frenzy", name: "Frenzy", desc: "Your bites heal you (lifesteal) for a few seconds." },
+    ],
   },
   spit: {
     id: "spit",
@@ -54,7 +69,10 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     speed: 320,
     health: 3000,
     damage: 760,
-    gadgets: ["Reload", "Caltrops"],
+    gadgets: [
+      { id: "reload", name: "Reload", desc: "Instantly refill all ammo." },
+      { id: "caltrops", name: "Caltrops", desc: "Scatter spikes that slow nearby enemies." },
+    ],
   },
   brute: {
     id: "brute",
@@ -67,7 +85,10 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     speed: 250,
     health: 6200,
     damage: 1320,
-    gadgets: ["Shield", "Slam"],
+    gadgets: [
+      { id: "shield", name: "Shield", desc: "Brace: take greatly reduced damage for ~2.5s." },
+      { id: "slam", name: "Slam", desc: "Pound the ground — damage + knock back nearby enemies." },
+    ],
   },
   vex: {
     id: "vex",
@@ -80,7 +101,10 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     speed: 300,
     health: 2800,
     damage: 1120,
-    gadgets: ["Reload", "Adrenaline"],
+    gadgets: [
+      { id: "reload", name: "Reload", desc: "Instantly refill all ammo." },
+      { id: "adrenaline", name: "Adrenaline", desc: "A surge of speed to reposition the sniper." },
+    ],
   },
   spike: {
     id: "spike",
@@ -93,7 +117,10 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     speed: 300,
     health: 4800,
     damage: 1800,
-    gadgets: ["Thorns", "Roll"],
+    gadgets: [
+      { id: "thorns", name: "Thorns", desc: "Erupt a ring of thorns — damage + slow nearby enemies." },
+      { id: "roll", name: "Roll", desc: "Evasive roll: a quick burst of speed." },
+    ],
   },
   wisp: {
     id: "wisp",
@@ -106,7 +133,10 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     speed: 380,
     health: 3200,
     damage: 480,
-    gadgets: ["Blink", "Haste"],
+    gadgets: [
+      { id: "blink", name: "Blink", desc: "Dash a short distance almost instantly." },
+      { id: "haste", name: "Haste", desc: "Sustained speed boost for hit-and-run." },
+    ],
   },
   ruby: {
     id: "ruby",
@@ -119,7 +149,10 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     speed: 320,
     health: 3600,
     damage: 720,
-    gadgets: ["Bloom", "Thornburst"],
+    gadgets: [
+      { id: "bloom", name: "Bloom", desc: "Sprout a plant that heals you over a moment." },
+      { id: "thornburst", name: "Thornburst", desc: "Lash vines around you — slow + hurt nearby foes." },
+    ],
   },
   asher: {
     id: "asher",
@@ -132,7 +165,10 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     speed: 225,
     health: 5200,
     damage: 820,
-    gadgets: ["Acid Puddle", "Caustic Shell"],
+    gadgets: [
+      { id: "acidpuddle", name: "Acid Puddle", desc: "Spew acid underfoot — slow + burn nearby enemies." },
+      { id: "caustic", name: "Caustic Shell", desc: "Harden your shell to briefly reduce incoming damage." },
+    ],
   },
   sam: {
     id: "sam",
@@ -145,7 +181,10 @@ export const MONSTER_LOOKS: Record<string, MonsterLook> = {
     speed: 300,
     health: 5000,
     damage: 820,
-    gadgets: ["Rev Up", "Oil Slick"],
+    gadgets: [
+      { id: "revup", name: "Rev Up", desc: "Rev the chainsaw: gain lifesteal and a speed boost." },
+      { id: "oilslick", name: "Oil Slick", desc: "Drop a slick that slows anyone who steps in it." },
+    ],
   },
 };
 
