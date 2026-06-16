@@ -25,7 +25,7 @@ import {
   CONNECT_TIMEOUT_MS,
 } from "../config";
 import { mapById, type Rect } from "./maps";
-import { lookOf } from "./monsters";
+import { lookOf, MONSTER_ORDER } from "./monsters";
 import { Sfx } from "../audio/Sfx";
 import { resolveMove, clamp } from "./collision";
 
@@ -160,6 +160,17 @@ export class GameScene extends Phaser.Scene {
 
   constructor() {
     super("GameScene");
+  }
+
+  /**
+   * Load the per-monster creature sprites (transparent PNGs) before create().
+   * PlayerView uses `brawler-<id>` if present and falls back to the emoji body if
+   * a texture is missing, so a failed load degrades gracefully.
+   */
+  preload() {
+    for (const id of MONSTER_ORDER) {
+      this.load.image(`brawler-${id}`, `${import.meta.env.BASE_URL}brawlers/${id}.png`);
+    }
   }
 
   create(data: SceneData) {

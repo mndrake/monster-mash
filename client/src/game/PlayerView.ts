@@ -24,7 +24,14 @@ export class PlayerView {
   body: Phaser.GameObjects.Arc;
   private shadow: Phaser.GameObjects.Ellipse;
   private rim: Phaser.GameObjects.Arc;
-  private emoji: Phaser.GameObjects.Text;
+  /** Flat player-colored ring at the feet — the per-player ID under the sprite. */
+  private groundRing: Phaser.GameObjects.Ellipse;
+  /** The creature: a generated sprite if loaded, else an emoji fallback. */
+  private avatar: Phaser.GameObjects.Image | Phaser.GameObjects.Text;
+  /** The avatar's natural (rest) scale — sprites are scaled to the body radius. */
+  private baseScale = 1;
+  /** Sprite-only horizontal facing (with a deadzone), so it turns with movement. */
+  private faceLeft = false;
   private label: Phaser.GameObjects.Text;
   private pointer: Phaser.GameObjects.Triangle;
   private healthBg: Phaser.GameObjects.Rectangle;
@@ -97,6 +104,13 @@ export class PlayerView {
       .ellipse(player.x, player.y + this.radius * 0.62, this.radius * 1.9, this.radius * 0.85, SHADOW, 0.32)
       .setDepth(1);
 
+    // Flat player-colored ground ring under the sprite (the per-player ID — the
+    // creature sprite hides the body disc, so identity lives here + the name tag).
+    this.groundRing = scene.add
+      .ellipse(player.x, player.y + this.radius * 0.78, this.radius * 2.5, this.radius * 1.05, this.colorNum, 0.16)
+      .setStrokeStyle(3, this.colorNum, 0.95)
+      .setDepth(1);
+
     // A dark disc just larger than the body gives a clean, bold outline rim.
     this.rim = scene.add.circle(player.x, player.y, this.radius + 4, OUTLINE, 1).setDepth(1);
 
@@ -106,11 +120,22 @@ export class PlayerView {
       .setStrokeStyle(isLocal ? 4 : 3, this.colorNum, 1)
       .setDepth(2);
 
-    // The monster itself, drawn as a big emoji.
-    this.emoji = scene.add
-      .text(player.x, player.y, look.emoji, { fontSize: `${Math.round(this.radius * 1.7)}px` })
-      .setOrigin(0.5)
-      .setDepth(3);
+    // The monster itself: a generated creature sprite if its texture loaded,
+    // otherwise the original emoji body (graceful fallback). The sprite is scaled
+    // so its drawn height tracks the body radius.
+    const spriteKey = `brawler-${player.monster}`;
+    if (scene.textures.exists(spriteKey)) {
+      const img = scene.add.image(player.x, player.y, spriteKey).setOrigin(0.5).setDepth(3);
+      this.baseScale = (this.radius * 3.8) / img.height;
+      img.setScale(this.baseScale);
+      this.avatar = img;
+    } else {
+      this.avatar = scene.add
+        .text(player.x, player.y, look.emoji, { fontSize: `${Math.round(this.radius * 1.7)}px` })
+        .setOrigin(0.5)
+        .setDepth(3);
+      this.baseScale = 1;
+    }
 
     // A little wedge pointing where the monster is aiming.
     this.pointer = scene.add
@@ -152,9 +177,18 @@ export class PlayerView {
   private playSpawnIn(): void {
     // Hand scale to this tween for its duration; attach() backs off until then.
     this.spawnUntil = performance.now() + 340;
-    for (const obj of [this.shadow, this.rim, this.body, this.emoji]) {
+    // Each object pops to its NATURAL scale (1 for the discs, baseScale for a
+    // sprite avatar — tweening it to 1 would briefly balloon the full texture).
+    const items: [Phaser.GameObjects.Components.Transform & Phaser.GameObjects.GameObject, number][] = [
+      [this.shadow, 1],
+      [this.groundRing, 1],
+      [this.rim, 1],
+      [this.body, 1],
+      [this.avatar, this.baseScale],
+    ];
+    for (const [obj, target] of items) {
       obj.setScale(0);
-      this.scene.tweens.add({ targets: obj, scale: 1, duration: 320, ease: "Back.easeOut" });
+      this.scene.tweens.add({ targets: obj, scale: target, duration: 320, ease: "Back.easeOut" });
     }
   }
 
@@ -170,7 +204,7 @@ export class PlayerView {
     // Flash red when we just lost health (and aren't being newly spawned).
     if (player.alive && player.health < this.prevHealth - 1) {
       this.flashUntil = performance.now() + 130;
-      this.emoji.setTint(0xff5252);
+      this.avatar.setTint(0xff5252);
       this.hitPunch = 1; // scale punch (driven in attach, not a tween)
     }
     this.prevHealth = player.health;
@@ -223,7 +257,7 @@ export class PlayerView {
     this.body.setAlpha(bodyAlpha);
     this.rim.setAlpha(dead ? 0.2 : lurking ? 0.1 : 1);
     this.shadow.setAlpha(dead || lurking ? 0 : 0.32);
-    this.emoji.setAlpha(dead ? 0.35 : lurking ? 0.12 : 1);
+    this.avatar.setAlpha(dead ? 0.35 : lurking ? 0.12 : 1);
     this.label.setAlpha(dead ? 0.4 : lurking ? 0 : 1);
     this.healthBg.setVisible(!dead && !lurking);
     this.healthFill.setVisible(!dead && !lurking);
@@ -268,7 +302,7 @@ export class PlayerView {
     // distortion — the spike just clips to "max" and is invisible.
     const vx = (x - this.body.x) / dt;
     const speed = alive ? Phaser.Math.Clamp(Math.hypot(x - this.body.x, y - this.body.y) / dt / this.maxSpeed, 0, 1) : 0;
-    const leanTarget = alive ? Phaser.Math.Clamp(vx / this.maxSpeed, -1, 1) * 0.26 : 0;
+    const leanTarget = alive ? Phaser.Math.Clamp(vx / this.maxSpeed, -1, 1) * 0.16 : 0;
     const k = Math.min(1, dt * 12); // smoothing toward the targets
     this.speedNorm += (speed - this.speedNorm) * k;
     this.lean += (leanTarget - this.lean) * k;
@@ -294,26 +328,38 @@ export class PlayerView {
     const idle = alive ? Math.sin(now / 420 + this.bobPhase) * 2.5 : 0;
     const bob = idle - (alive ? hop * this.speedNorm * 8 : 0);
 
-    // Shadow stays on the ground (its swell-on-landing is applied below, gated
-    // so it doesn't fight the spawn-in tween that also scales the shadow).
+    // Shadow + ground ring stay on the ground (no bob). The ring shows for a
+    // visible, non-lurking living player (matches the sprite's own visibility).
     this.shadow.setPosition(x, y + this.radius * 0.62);
+    this.groundRing.setPosition(x, y + this.radius * 0.78);
+    this.groundRing.setVisible(alive && !(this.snap.hidden && !this.isLocal));
 
     // A fresh shot kicks the body back opposite its facing for a beat (recoil).
     const kick = this.recoil * 8;
-    this.emoji.setPosition(x - Math.cos(f) * kick, y + bob - Math.sin(f) * kick);
+    this.avatar.setPosition(x - Math.cos(f) * kick, y + bob - Math.sin(f) * kick);
     // Waddle: a rotation wobble while moving, composed with (never overwriting)
     // the movement lean.
-    const wobble = Math.sin(this.walkPhase) * this.speedNorm * 0.16;
-    this.emoji.setRotation(this.lean + wobble);
+    const wobble = Math.sin(this.walkPhase) * this.speedNorm * 0.1;
+    this.avatar.setRotation(this.lean + wobble);
+    // A sprite turns to face its aim/movement (with a deadzone so a near-vertical
+    // aim doesn't flip-flop); the emoji fallback has no flip.
+    if ("setFlipX" in this.avatar) {
+      const cx = Math.cos(f);
+      if (cx > 0.25) this.faceLeft = false;
+      else if (cx < -0.25) this.faceLeft = true;
+      this.avatar.setFlipX(this.faceLeft);
+    }
 
     // Scale: super POP + hurt PUNCH (one-shots) plus a hop-synced squash &
     // stretch — stretch tall at the top of a stride, squash wide on the landing.
     // The spawn-in tween owns scale during its window, so back off then.
     if (now >= this.spawnUntil) {
-      const grow = 1 + this.pop * 0.5 + this.hitPunch * 0.3;
-      const sx = 1 + (grounded - 0.4) * this.speedNorm * 0.26;
-      const sy = 1 + (hop - 0.4) * this.speedNorm * 0.32;
-      this.emoji.setScale(grow * sx, grow * sy);
+      const grow = 1 + this.pop * 0.4 + this.hitPunch * 0.25;
+      // Squash/stretch on top of the avatar's natural baseScale. Flip mirrors X
+      // via setFlipX (above), so scaleX stays positive here.
+      const sx = 1 + (grounded - 0.4) * this.speedNorm * 0.18;
+      const sy = 1 + (hop - 0.4) * this.speedNorm * 0.22;
+      this.avatar.setScale(this.baseScale * grow * sx, this.baseScale * grow * sy);
       // The collision ring stays honest (no walk-squash) — only the super pop.
       const discPop = 1 + this.pop * 0.32;
       this.body.setScale(discPop);
@@ -324,7 +370,7 @@ export class PlayerView {
 
     // Clear the hit-flash tint once it has elapsed.
     if (this.flashUntil && now > this.flashUntil) {
-      this.emoji.clearTint();
+      this.avatar.clearTint();
       this.flashUntil = 0;
     }
 
@@ -390,7 +436,8 @@ export class PlayerView {
     this.body.destroy();
     this.shadow.destroy();
     this.rim.destroy();
-    this.emoji.destroy();
+    this.avatar.destroy();
+    this.groundRing.destroy();
     this.pointer.destroy();
     this.label.destroy();
     this.healthBg.destroy();
