@@ -1,10 +1,10 @@
 # M8 — Gadgets, three new brawlers, and bot customization
 
-> **Status: PR-A through PR-E SHIPPED** (gadget system + 2 gadgets per brawler;
-> Ruby/Asher/Sam; bot customization; voice lines; gadget descriptions + icons).
-> Still planned: the rest of the visual pass — **PR-F individualized
-> projectiles** and **PR-G player animation**. Second slice of the
-> arc (after M7 bots). Adds the
+> **Status: COMPLETE — PR-A through PR-G all SHIPPED** (gadget system + 2 gadgets
+> per brawler; Ruby/Asher/Sam; bot customization; voice lines; gadget
+> descriptions + icons; themed projectiles; procedural player animation). The
+> only deferred piece is PR-G **Stage 2** (generated sprite frames), pushed to
+> M9. Second slice of the arc (after M7 bots). Adds the
 > defining Brawl-Stars depth layer — **gadgets (2 per brawler, pick 1 of 2)** —
 > plus **Ruby, Asher, Sam**, **5–10 voice lines per brawler**, and **bot
 > customization** (what they play + how hard). **No star powers** (per request).
@@ -198,12 +198,14 @@ wording there before generating audio.
 - **PR-E — Gadget descriptions + icons.** ✅ SHIPPED. `desc` on the client
   `GadgetLook` + 17 generated icons in `client/public/gadgets/`; shown in the
   lobby chooser and on the GADGET button.
-- **PR-F — Individualized projectiles.** Themed per-brawler shots (Ruby = plants,
-  etc.); add a `skin` to the `Projectile` schema, render per skin/kind in
-  `ProjectileView` (procedural first, optional generated sprites). *Effort: M.*
-- **PR-G — Player animation.** Procedural squash/stretch/lean/recoil first
-  (zero-asset), then optional generated walk/attack sprite frames. *Effort: M
-  (procedural) → L (sprites).*
+- **PR-F — Individualized projectiles.** ✅ SHIPPED. Synced `ownerMonster` on the
+  `Projectile` schema; `ProjectileView` draws a themed procedural shape per
+  monster (bolt/droplet/fang oriented to travel; leaf/boulder/tooth spun), fill
+  keeps the owner color. Procedural-only (no sprite assets needed).
+- **PR-G — Player animation.** ✅ SHIPPED (Stage 1, procedural/zero-asset):
+  lean + speed-scaled bob + squash/stretch, fire recoil, super pop, hurt punch —
+  all driven from a single `attach()` transform owner. **Stage 2** (generated
+  walk/attack sprite frames) deferred to M9.
 
 Order: C and D are independent of the visual PRs. E is a quick follow-on to the
 shipped gadget system. F and G are the bigger visual lift (G's sprite stage may
