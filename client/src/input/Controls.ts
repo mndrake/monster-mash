@@ -48,6 +48,7 @@ export class Controls {
   private rightZone?: HTMLDivElement;
   private superButton: HTMLButtonElement;
   private gadgetButton: HTMLButtonElement;
+  private gadgetCooldown!: HTMLDivElement;
   private gameEl: HTMLElement;
 
   private joyX = 0;
@@ -114,6 +115,11 @@ export class Controls {
     this.gadgetButton.id = "gadget-btn";
     this.gadgetButton.textContent = "GADGET";
     this.gadgetButton.className = "gadget-btn";
+    // A radial cooldown overlay (a dark wedge that sweeps away as it recharges),
+    // so firing the gadget is visibly confirmed even for subtle effects.
+    this.gadgetCooldown = document.createElement("div");
+    this.gadgetCooldown.className = "gadget-cooldown";
+    this.gadgetButton.appendChild(this.gadgetCooldown);
     gameEl.appendChild(this.gadgetButton);
     this.gadgetButton.addEventListener("pointerdown", (ev) => {
       ev.preventDefault();
@@ -248,6 +254,18 @@ export class Controls {
   /** Let GameScene light up the Gadget button when it's off cooldown. */
   setGadgetReady(ready: boolean): void {
     this.gadgetButton.classList.toggle("ready", ready);
+  }
+
+  /**
+   * Show the gadget's recharge as a dark wedge that sweeps away (charge 0→1).
+   * At charge 1 the overlay is gone; right after firing it's fully dark, so the
+   * sweep is a clear "the gadget fired" confirmation.
+   */
+  setGadgetCooldown(charge: number): void {
+    const c = Math.max(0, Math.min(1, charge));
+    const deg = (1 - c) * 360;
+    this.gadgetCooldown.style.background =
+      c >= 1 ? "none" : `conic-gradient(rgba(0,0,0,0.62) ${deg}deg, transparent 0deg)`;
   }
 
   /** Show the chosen gadget's icon on the GADGET button face. */

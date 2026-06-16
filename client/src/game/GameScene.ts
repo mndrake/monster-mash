@@ -128,6 +128,8 @@ export class GameScene extends Phaser.Scene {
   private killFeed: { text: Phaser.GameObjects.Text; expireAt: number }[] = [];
   // Edge-detection state for sound triggers (compared each frame).
   private prevSuperReady = false;
+  /** Local gadget ready last frame — drives the gadget-cast sound on true→spent. */
+  private prevGadgetReady = false;
   private prevCubes = 0;
   private prevCountdown = -1;
   private prevPhase = "";
@@ -1027,6 +1029,7 @@ export class GameScene extends Phaser.Scene {
     // ---- Super button glow ----
     this.controls.setSuperReady((me?.alive ?? false) && (me?.super ?? 0) >= 1);
     this.controls.setGadgetReady((me?.alive ?? false) && (me?.gadgetCharge ?? 0) >= 1);
+    this.controls.setGadgetCooldown(me?.gadgetCharge ?? 1);
 
     // ---- centered banner ----
     const cam = this.cameras.main;
@@ -1066,6 +1069,13 @@ export class GameScene extends Phaser.Scene {
     // (death drops `alive`, so that's excluded) → the local player cast it.
     if (!ready && this.prevSuperReady && me?.alive) this.sfx.voice(this.myMonster(), "super");
     this.prevSuperReady = ready;
+
+    // Gadget just spent: was ready, dropped while alive → the local player fired
+    // it. Plays a chirp so it's obvious the gadget went off (the button's
+    // cooldown sweep is the visual confirmation).
+    const gReady = !!me?.alive && (me?.gadgetCharge ?? 0) >= 1;
+    if (!gReady && this.prevGadgetReady && me?.alive) this.sfx.gadget();
+    this.prevGadgetReady = gReady;
 
     // We just spawned into the round (local alive false → true).
     const alive = !!me?.alive;

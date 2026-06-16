@@ -212,6 +212,12 @@ export class Sfx {
     this.blip(990, 0.2, { type: "sine", gain: 0.26, delay: 0.09 });
   }
 
+  /** Gadget activated — a short rising "tech" chirp distinct from the super ding. */
+  gadget(): void {
+    this.blip(520, 0.09, { type: "square", gain: 0.22, slideTo: 880 });
+    this.blip(880, 0.12, { type: "triangle", gain: 0.2, delay: 0.07 });
+  }
+
   cube(): void {
     this.blip(880, 0.07, { type: "triangle", gain: 0.2 });
     this.blip(1320, 0.1, { type: "triangle", gain: 0.2, delay: 0.06 });

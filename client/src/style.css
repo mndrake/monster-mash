@@ -355,6 +355,13 @@ button.primary:active {
   object-fit: cover;
   pointer-events: none;
 }
+.gadget-btn .gadget-cooldown {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1;
+}
 .gadget-btn.ready {
   border-color: #59b0ff;
   background: radial-gradient(circle at 50% 40%, #bfe3ff, #2e8bff);
