@@ -1,10 +1,12 @@
 # M6 — Deployment (Render + CI)
 
-> **Status: PLANNED.** Up through M5 the game only ran on the LAN (`npm run dev`
-> on a laptop, phones visit `http://<computer-ip>:5173`). M6 puts it on the
-> public internet on **Render**, with HTTPS, an installable PWA, and a GitHub
-> Actions gate that ships only green builds. No gameplay changes — this is
-> infra + one tiny client tweak for cold starts.
+> **Status: SHIPPED.** (`render.yaml` + `.github/workflows/deploy.yml` are live;
+> push to `main` runs the gate and triggers the Render deploy hooks.) Up through
+> M5 the game only ran on the LAN (`npm run dev` on a laptop, phones visit
+> `http://<computer-ip>:5173`). M6 puts it on the public internet on **Render**,
+> with HTTPS, an installable PWA, and a GitHub Actions gate that ships only green
+> builds. No gameplay changes — this is infra + one tiny client tweak for cold
+> starts.
 
 This is the first **non-gameplay** milestone: no `MatchRoom`/`config.ts`/schema
 work. The artifacts live at the repo root, not in `server/`/`client/` source:

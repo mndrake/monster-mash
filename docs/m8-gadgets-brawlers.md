@@ -1,9 +1,9 @@
 # M8 — Gadgets, three new brawlers, and bot customization
 
-> **Status: PR-A + PR-B SHIPPED** (gadget system + 2 gadgets per brawler;
-> Ruby/Asher/Sam). Still planned: PR-C (bot customization), PR-D (voice lines),
-> and the visual pass — **PR-E gadget descriptions + icons**, **PR-F
-> individualized projectiles**, **PR-G player animation**. Second slice of the
+> **Status: PR-A through PR-E SHIPPED** (gadget system + 2 gadgets per brawler;
+> Ruby/Asher/Sam; bot customization; voice lines; gadget descriptions + icons).
+> Still planned: the rest of the visual pass — **PR-F individualized
+> projectiles** and **PR-G player animation**. Second slice of the
 > arc (after M7 bots). Adds the
 > defining Brawl-Stars depth layer — **gadgets (2 per brawler, pick 1 of 2)** —
 > plus **Ruby, Asher, Sam**, **5–10 voice lines per brawler**, and **bot
@@ -188,13 +188,16 @@ wording there before generating audio.
 ## PR breakdown (build order)
 - **PR-A — Status-effect layer + gadget system** (the enabler). ✅ SHIPPED.
 - **PR-B — Ruby, Asher, Sam.** ✅ SHIPPED.
-- **PR-C — Bot customization.** `addBot` options, difficulty-scaled AI, waiting-
-  room monster/level controls, LOS fix. *Effort: M.*
-- **PR-D — Voice lines.** 5–10 per brawler (all nine): write the lines, generate
-  audio via pollinations TTS, wire playback in `Sfx.ts` off the existing signals,
-  respect mute. *Effort: M.*
-- **PR-E — Gadget descriptions + icons.** Add `desc` + generated icon image to
-  every gadget; show in the lobby chooser and the GADGET button. *Effort: S–M.*
+- **PR-C — Bot customization.** ✅ SHIPPED. `addBot` options (monster +
+  difficulty), difficulty-scaled AI (awareness/fire-reliability/abilities),
+  waiting-room monster/level controls, LOS fire check.
+- **PR-D — Voice lines.** ✅ SHIPPED. 7 lines per brawler (all nine), generated
+  via pollinations ElevenLabs TTS, baked to `client/public/voice/`, played from
+  `Sfx.ts` off the existing signals (local player only), mute-respecting. Script:
+  `docs/m8-voice-lines.md`.
+- **PR-E — Gadget descriptions + icons.** ✅ SHIPPED. `desc` on the client
+  `GadgetLook` + 17 generated icons in `client/public/gadgets/`; shown in the
+  lobby chooser and on the GADGET button.
 - **PR-F — Individualized projectiles.** Themed per-brawler shots (Ruby = plants,
   etc.); add a `skin` to the `Projectile` schema, render per skin/kind in
   `ProjectileView` (procedural first, optional generated sprites). *Effort: M.*
