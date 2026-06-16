@@ -56,6 +56,8 @@ export interface ProjectileSnapshot {
   radius: number;
   color: string;
   kind: string;
+  /** Firing monster's id — picks the themed projectile look (""=generic dot). */
+  ownerMonster: string;
 }
 
 /** A collectible power cube. */
@@ -339,9 +341,9 @@ function playerSnap(
 
 function projSnap(
   id: string,
-  p: { x: number; y: number; radius: number; color: string; kind: string },
+  p: { x: number; y: number; radius: number; color: string; kind: string; ownerMonster: string },
 ): ProjectileSnapshot {
-  return { id, x: p.x, y: p.y, radius: p.radius, color: p.color, kind: p.kind };
+  return { id, x: p.x, y: p.y, radius: p.radius, color: p.color, kind: p.kind, ownerMonster: p.ownerMonster };
 }
 
 function boxSnap(

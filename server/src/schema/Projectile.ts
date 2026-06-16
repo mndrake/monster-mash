@@ -17,6 +17,8 @@ export class Projectile extends Schema {
   @type("string") color = "#ffffff";
   /** "main" or "super" — lets the client make supers look beefier. */
   @type("string") kind = "main";
+  /** The firing monster's id (e.g. "ruby") — picks the themed projectile look. */
+  @type("string") ownerMonster = "";
 
   // ---- server-only (NOT synced) ----
   /** sessionId of the monster that fired this — it can't hit its owner. */

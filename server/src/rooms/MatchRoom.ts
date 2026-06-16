@@ -700,6 +700,7 @@ export class MatchRoom extends Room<MatchState> {
       proj.radius = radius;
       proj.color = owner.color;
       proj.kind = kind;
+      proj.ownerMonster = owner.monster;
       proj.ownerId = this.keyOf(owner);
       proj.vx = Math.cos(angle) * speed;
       proj.vy = Math.sin(angle) * speed;
