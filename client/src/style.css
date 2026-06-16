@@ -96,7 +96,8 @@ input {
   flex: 1;
 }
 
-#generate {
+#generate,
+#copy-link {
   margin-top: 6px;
   width: 52px;
   font-size: 22px;

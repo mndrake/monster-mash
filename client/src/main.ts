@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import "./style.css";
 import { GameScene } from "./game/GameScene";
-import { randomRoomCode } from "./util/roomCode";
+import { randomRoomCode, normalizeRoomCode } from "./util/roomCode";
 import { MONSTER_ORDER, lookOf } from "./game/monsters";
 import { setupPwaUpdates } from "./pwa";
 
@@ -126,12 +126,32 @@ function selectMonster(id: string) {
 }
 selectMonster(chosenMonster);
 
-// Pre-fill a random code so a solo developer can just hit "Join arena".
-codeInput.value = randomRoomCode();
+// Pre-fill the code from a shared link (?room=CODE or #CODE) if present, else a
+// random code so a solo developer can just hit "Join arena".
+const sharedCode =
+  normalizeRoomCode(new URLSearchParams(location.search).get("room")) ??
+  normalizeRoomCode(location.hash.replace(/^#/, ""));
+codeInput.value = sharedCode ?? randomRoomCode();
 
 // The dice button makes a fresh code (i.e. a brand new arena).
 document.getElementById("generate")!.addEventListener("click", () => {
   codeInput.value = randomRoomCode();
+});
+
+// Copy a shareable link (origin + ?room=CODE) for the current code.
+const copyLinkBtn = document.getElementById("copy-link") as HTMLButtonElement;
+copyLinkBtn.addEventListener("click", async () => {
+  const code = (normalizeRoomCode(codeInput.value) ?? randomRoomCode());
+  codeInput.value = code;
+  const link = `${location.origin}${location.pathname}?room=${code}`;
+  try {
+    await navigator.clipboard.writeText(link);
+    copyLinkBtn.textContent = "✅";
+  } catch {
+    // Clipboard blocked (insecure context / permissions) — show the link to copy.
+    window.prompt("Copy this link to share the room:", link);
+  }
+  window.setTimeout(() => (copyLinkBtn.textContent = "🔗"), 1200);
 });
 
 document.getElementById("join")!.addEventListener("click", startGame);
@@ -143,8 +163,12 @@ document.getElementById("join")!.addEventListener("click", startGame);
 );
 
 function startGame() {
-  const roomCode = (codeInput.value.trim() || randomRoomCode()).toUpperCase();
+  const roomCode = normalizeRoomCode(codeInput.value) ?? randomRoomCode();
   const name = nameInput.value.trim() || "Player";
+
+  // Reflect the active room into the URL so the address bar is copy-pasteable and
+  // a refresh rejoins the same room.
+  history.replaceState(null, "", `${location.pathname}?room=${roomCode}`);
 
   errorEl.textContent = "";
   lobby.style.display = "none";
