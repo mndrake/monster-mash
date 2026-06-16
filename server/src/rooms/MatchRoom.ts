@@ -447,7 +447,15 @@ export class MatchRoom extends Room<MatchState> {
   /** Current movement-speed multiplier from status effects (0 while rooted). */
   private speedFactor(p: Player): number {
     if (p.rootUntil > this.now) return 0;
-    return p.speedMultUntil > this.now ? p.speedMult : 1;
+    const status = p.speedMultUntil > this.now ? p.speedMult : 1;
+    // Bots move a touch slower than humans so they never out-run a player (a
+    // touch-joystick human often runs below full input, so equal base speed
+    // already feels fast). This single lever covers EVERY movement branch
+    // (flee/engage/strafe/drift) and damps their speed-burst gadgets too, since
+    // it multiplies into the same factor (a hasted bot is 0.88×1.6, not 1.6).
+    if (!p.isBot) return status;
+    const botScale = p.botLevel === "easy" ? 0.8 : p.botLevel === "hard" ? 0.97 : 0.88;
+    return status * botScale;
   }
 
   /** Incoming-damage multiplier from status effects (<1 while shielded). */
