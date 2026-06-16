@@ -57,6 +57,8 @@ export class PlayerView {
   /** Smoothed normalized move speed [0..1] and the horizontal lean angle. */
   private speedNorm = 0;
   private lean = 0;
+  /** Walk-cycle phase — advances only while moving, drives the hop + waddle. */
+  private walkPhase = 0;
   /** Edge-detect baselines for firing (ammo drop) and super cast (meter drop). */
   private prevAmmo: number;
   private prevSuper: number;
@@ -279,25 +281,45 @@ export class PlayerView {
 
     this.body.setPosition(x, y);
     this.rim.setPosition(x, y);
+
+    // Walk cycle: the phase only advances while actually moving (so an idle
+    // monster doesn't waddle), faster the quicker it goes. `hop` is 0 on the
+    // ground, 1 at the top of each stride.
+    const f = this.snap.facing;
+    if (alive) this.walkPhase += this.speedNorm * dt * 17;
+    const hop = Math.abs(Math.sin(this.walkPhase));
+    const grounded = 1 - hop;
+
+    // Vertical: a gentle idle hover always, plus a bigger bounce while moving.
+    const idle = alive ? Math.sin(now / 420 + this.bobPhase) * 2.5 : 0;
+    const bob = idle - (alive ? hop * this.speedNorm * 8 : 0);
+
+    // Shadow stays on the ground (its swell-on-landing is applied below, gated
+    // so it doesn't fight the spawn-in tween that also scales the shadow).
     this.shadow.setPosition(x, y + this.radius * 0.62);
 
-    // The emoji hovers above the ring with a gentle bob that grows while moving
-    // (a run-cycle lilt); the shadow stays put, selling the lift. A fresh shot
-    // kicks it back opposite its facing for a beat (recoil).
-    const f = this.snap.facing;
-    const bob = alive ? Math.sin(now / 300 + this.bobPhase) * (3 + this.speedNorm * 3.5) : 0;
-    const kick = this.recoil * 7;
+    // A fresh shot kicks the body back opposite its facing for a beat (recoil).
+    const kick = this.recoil * 8;
     this.emoji.setPosition(x - Math.cos(f) * kick, y + bob - Math.sin(f) * kick);
-    this.emoji.setRotation(this.lean);
+    // Waddle: a rotation wobble while moving, composed with (never overwriting)
+    // the movement lean.
+    const wobble = Math.sin(this.walkPhase) * this.speedNorm * 0.16;
+    this.emoji.setRotation(this.lean + wobble);
 
-    // Scale: super POP + hurt PUNCH (one-shots) combined with a move squash &
-    // stretch — but the spawn-in tween owns scale for its window, so back off then.
+    // Scale: super POP + hurt PUNCH (one-shots) plus a hop-synced squash &
+    // stretch — stretch tall at the top of a stride, squash wide on the landing.
+    // The spawn-in tween owns scale during its window, so back off then.
     if (now >= this.spawnUntil) {
-      const grow = 1 + this.pop * 0.5 + this.hitPunch * 0.28;
-      this.emoji.setScale(grow * (1 + this.speedNorm * 0.12), grow * (1 - this.speedNorm * 0.1));
+      const grow = 1 + this.pop * 0.5 + this.hitPunch * 0.3;
+      const sx = 1 + (grounded - 0.4) * this.speedNorm * 0.26;
+      const sy = 1 + (hop - 0.4) * this.speedNorm * 0.32;
+      this.emoji.setScale(grow * sx, grow * sy);
+      // The collision ring stays honest (no walk-squash) — only the super pop.
       const discPop = 1 + this.pop * 0.32;
       this.body.setScale(discPop);
       this.rim.setScale(discPop);
+      // Shadow swells as the monster lands (sells the hop).
+      this.shadow.setScale(1 + grounded * this.speedNorm * 0.2);
     }
 
     // Clear the hit-flash tint once it has elapsed.
