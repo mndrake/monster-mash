@@ -143,6 +143,9 @@ export class Network {
   /** Our own player id, so the game knows which monster is "me". */
   selfId = "";
 
+  /** Last measured round-trip time to the server (ms), 0 until the first pong. */
+  pingMs = 0;
+
   constructor() {
     this.client = new Client(SERVER_URL);
   }
@@ -219,6 +222,11 @@ export class Network {
         else if (e.t === "ko") events.onKO?.(e);
       }
     });
+
+    // ---- latency probe: server echoes our timestamp; we measure the round trip ----
+    this.room.onMessage("pong", (m: { t: number }) => {
+      this.pingMs = Math.round(performance.now() - (m?.t ?? 0));
+    });
   }
 
   // ---- intent we send to the server (it decides what actually happens) ----
@@ -250,6 +258,10 @@ export class Network {
   }
   sendRemoveBot(): void {
     this.room?.send("removeBot");
+  }
+  /** Probe latency: the server echoes this timestamp back as a "pong". */
+  sendPing(): void {
+    this.room?.send("ping", { t: performance.now() });
   }
 
   /** Are we the host (the player who can start rounds)? */
