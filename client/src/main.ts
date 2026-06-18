@@ -92,7 +92,14 @@ MONSTER_ORDER.forEach((id) => {
 let chosenGadget = 0;
 const gadgetWrap = document.createElement("div");
 gadgetWrap.id = "gadget-pick";
-monstersEl.insertAdjacentElement("afterend", gadgetWrap);
+// Place the chooser AFTER the whole "Pick your monster" <label>, not inside it.
+// #monsters lives inside that label, so inserting "afterend" of #monsters would
+// nest these gadget buttons within the label — and a <label> forwards clicks to
+// its first labelable control (the first monster card), which runs selectMonster
+// and resets chosenGadget to 0. That made the second gadget impossible to pick
+// (clicks set it to 1, then the label immediately reset it to 0).
+const monsterLabel = monstersEl.closest("label") ?? monstersEl;
+monsterLabel.insertAdjacentElement("afterend", gadgetWrap);
 function renderGadgets(id: string) {
   const g = lookOf(id).gadgets;
   gadgetWrap.innerHTML =
