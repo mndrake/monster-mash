@@ -116,7 +116,10 @@ function renderGadgets(id: string) {
       .join("") +
     `</div>`;
   gadgetWrap.querySelectorAll(".gp-btn").forEach((b) =>
-    b.addEventListener("click", () => {
+    b.addEventListener("click", (e) => {
+      // Keep the click from bubbling / triggering any ancestor default action.
+      e.preventDefault();
+      e.stopPropagation();
       chosenGadget = Number((b as HTMLElement).dataset.i);
       renderGadgets(id);
     }),
@@ -124,8 +127,12 @@ function renderGadgets(id: string) {
 }
 
 function selectMonster(id: string) {
+  // Only reset the chosen gadget when the monster ACTUALLY changes. This also
+  // makes the picker robust to any stray re-selection of the current monster
+  // (e.g. a click that bubbles/forwards): re-selecting the same monster must not
+  // wipe a gadget the player just picked.
+  if (id !== chosenMonster) chosenGadget = 0;
   chosenMonster = id;
-  chosenGadget = 0; // default to the first gadget when switching monster
   monstersEl.querySelectorAll(".monster-card").forEach((c) => {
     c.classList.toggle("selected", (c as HTMLElement).dataset.id === id);
   });
