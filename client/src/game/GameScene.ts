@@ -148,6 +148,18 @@ export class GameScene extends Phaser.Scene {
   private lastMoveX = 0;
   private lastMoveY = 0;
 
+  // --- perf: throttles, pools, and an optional FPS/ping readout ---
+  /** Last time the (expensive) poison gas was repainted; it's throttled below 60fps. */
+  private lastPoisonAt = 0;
+  /** Signature of the last aim-indicator draw, so we skip redraws when nothing moved. */
+  private aimSig = "";
+  /** Reusable FX objects (damage numbers, sparks, debris) to avoid GC churn in firefights. */
+  private circlePool: Phaser.GameObjects.Arc[] = [];
+  private textPool: Phaser.GameObjects.Text[] = [];
+  /** Show an FPS + ping readout in the HUD (toggle with the P key); persisted. */
+  private showPerf = localStorage.getItem("mm-perf") === "1";
+  private lastPingAt = 0;
+
   // Desktop mouse state.
   private mouseMoved = false;
   private lastMouseAimSent = 0;
@@ -228,6 +240,12 @@ export class GameScene extends Phaser.Scene {
     this.sfx.setEnabled(localStorage.getItem("mm-muted") !== "1");
     this.createMuteButton();
     this.input.keyboard!.addKey("M").on("down", () => this.toggleMute());
+    // P toggles a diagnostic FPS + round-trip-ping readout in the HUD. Lets you
+    // tell apart phone-FPS lag (low FPS, low ping) from network lag (high ping).
+    this.input.keyboard!.addKey("P").on("down", () => {
+      this.showPerf = !this.showPerf;
+      localStorage.setItem("mm-perf", this.showPerf ? "1" : "0");
+    });
 
     // Above the floor/grid, below the monsters — a tinted hazard on the ground.
     this.poison = this.add.graphics().setDepth(-5);
@@ -588,8 +606,14 @@ export class GameScene extends Phaser.Scene {
   /** A brief expanding ring where a shot appears, tinted to its color. */
   private spawnMuzzleFlash(p: ProjectileSnapshot) {
     const color = Phaser.Display.Color.HexStringToColor(p.color).color;
-    const ring = this.add
-      .circle(p.x, p.y, p.kind === "super" ? 20 : 12, color, 0.85)
+    const ring = this.acquireCircle();
+    ring
+      .setPosition(p.x, p.y)
+      .setRadius(p.kind === "super" ? 20 : 12)
+      .setFillStyle(color, 0.85)
+      .setStrokeStyle()
+      .setScale(1)
+      .setAlpha(0.85)
       .setDepth(5)
       .setBlendMode(Phaser.BlendModes.ADD);
     this.tweens.add({
@@ -598,7 +622,7 @@ export class GameScene extends Phaser.Scene {
       alpha: 0,
       duration: 180,
       ease: "Quad.easeOut",
-      onComplete: () => ring.destroy(),
+      onComplete: () => this.releaseCircle(ring),
     });
   }
   private removeProjectile(id: string) {
@@ -636,10 +660,16 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < 10; i++) {
       const a = (i / 10) * Math.PI * 2 + Math.random() * 0.4;
       const dist = 30 + Math.random() * 40;
-      const bit = this.add
-        .circle(k.x, k.y, 4 + Math.random() * 3, color, 1)
+      const bit = this.acquireCircle();
+      bit
+        .setPosition(k.x, k.y)
+        .setRadius(4 + Math.random() * 3)
+        .setFillStyle(color, 1)
         .setStrokeStyle(1.5, 0x000000, 0.4)
-        .setDepth(7);
+        .setScale(1)
+        .setAlpha(1)
+        .setDepth(7)
+        .setBlendMode(Phaser.BlendModes.NORMAL); // solid debris, not additive
       this.tweens.add({
         targets: bit,
         x: k.x + Math.cos(a) * dist,
@@ -648,24 +678,53 @@ export class GameScene extends Phaser.Scene {
         scale: 0.3,
         duration: 420 + Math.random() * 160,
         ease: "Quad.easeOut",
-        onComplete: () => bit.destroy(),
+        onComplete: () => this.releaseCircle(bit),
       });
     }
   }
 
+  // ---- FX object pools ---------------------------------------------------
+  // Hits, sparks, muzzle flashes and KO debris are created in bursts during a
+  // firefight; allocating + destroying them each time churns the GC and causes
+  // frame hitches on phones. We reuse a small pool instead. Objects are only
+  // released back in a tween's onComplete, so a pooled object is never tweened
+  // twice at once. Every property is set explicitly on acquire (a circle may
+  // come back from a prior additive spark or stroked debris bit).
+
+  private acquireCircle(): Phaser.GameObjects.Arc {
+    const c = this.circlePool.pop();
+    if (c) return c.setActive(true).setVisible(true);
+    return this.add.circle(0, 0, 1);
+  }
+  private releaseCircle(c: Phaser.GameObjects.Arc) {
+    c.setActive(false).setVisible(false);
+    this.circlePool.push(c);
+  }
+  private acquireText(): Phaser.GameObjects.Text {
+    const t = this.textPool.pop();
+    if (t) return t.setActive(true).setVisible(true);
+    return this.add.text(0, 0, "");
+  }
+  private releaseText(t: Phaser.GameObjects.Text) {
+    t.setActive(false).setVisible(false);
+    this.textPool.push(t);
+  }
+
   /** A floating, rising damage number that fades out. */
   private spawnDamageNumber(x: number, y: number, amount: number, color: string, fontSize: number) {
-    const txt = this.add
-      .text(x + (Math.random() - 0.5) * 14, y - 8, String(amount), {
-        fontFamily: "sans-serif",
-        fontStyle: "bold",
-        fontSize: `${fontSize}px`,
-        color,
-        stroke: "#000000",
-        strokeThickness: 4,
-      })
+    const txt = this.acquireText();
+    txt
+      .setText(String(amount))
+      .setFontFamily("sans-serif")
+      .setFontStyle("bold")
+      .setFontSize(fontSize)
+      .setColor(color)
+      .setStroke("#000000", 4)
       .setOrigin(0.5)
-      .setDepth(9);
+      .setDepth(9)
+      .setScale(1)
+      .setAlpha(1)
+      .setPosition(x + (Math.random() - 0.5) * 14, y - 8);
     this.tweens.add({
       targets: txt,
       y: y - 44,
@@ -673,14 +732,20 @@ export class GameScene extends Phaser.Scene {
       scale: { from: 1.15, to: 0.9 },
       duration: 650,
       ease: "Quad.easeOut",
-      onComplete: () => txt.destroy(),
+      onComplete: () => this.releaseText(txt),
     });
   }
 
   /** A quick additive flash that expands and fades (impact spark). */
   private spawnBurst(x: number, y: number, color: number, radius: number) {
-    const ring = this.add
-      .circle(x, y, radius, color, 0.85)
+    const ring = this.acquireCircle();
+    ring
+      .setPosition(x, y)
+      .setRadius(radius)
+      .setFillStyle(color, 0.85)
+      .setStrokeStyle() // clear any leftover stroke from a pooled debris bit
+      .setScale(1)
+      .setAlpha(0.85)
       .setDepth(8)
       .setBlendMode(Phaser.BlendModes.ADD);
     this.tweens.add({
@@ -689,7 +754,7 @@ export class GameScene extends Phaser.Scene {
       alpha: 0,
       duration: 200,
       ease: "Quad.easeOut",
-      onComplete: () => ring.destroy(),
+      onComplete: () => this.releaseCircle(ring),
     });
   }
 
@@ -753,6 +818,15 @@ export class GameScene extends Phaser.Scene {
   /** Phaser calls this every frame (~60/sec). */
   update(_time: number, delta: number) {
     if (!this.net.connected) return;
+
+    // Probe latency once a second while the perf readout is on (a tiny message).
+    if (this.showPerf) {
+      const t = performance.now();
+      if (t - this.lastPingAt > 1000) {
+        this.lastPingAt = t;
+        this.net.sendPing();
+      }
+    }
 
     this.sendMovement();
     this.handleDesktopAim();
@@ -905,19 +979,33 @@ export class GameScene extends Phaser.Scene {
    * while you're actively aiming (touch) or whenever the mouse is in play.
    */
   private drawAim() {
-    this.aimLine.clear();
     const me = this.players.get(this.net.selfId);
     const self = this.net.self;
     const playing = this.net.match?.phase === "playing";
-    if (!me || !self || !self.alive || !playing) return;
-    if (!(this.controls.isAiming() || this.mouseMoved)) return;
+    const visible =
+      !!me && !!self && self.alive && playing && (this.controls.isAiming() || this.mouseMoved);
+    if (!visible) {
+      // Clear once when the indicator goes away; skip the redundant clears after.
+      if (this.aimSig !== "") {
+        this.aimLine.clear();
+        this.aimSig = "";
+      }
+      return;
+    }
 
-    const range = lookOf(self.monster).range;
-    const f = self.facing;
-    const bx = me.body.x;
-    const by = me.body.y;
-    const canFire = self.ammo >= 1;
+    const range = lookOf(self!.monster).range;
+    const f = self!.facing;
+    const bx = me!.body.x;
+    const by = me!.body.y;
+    const canFire = self!.ammo >= 1;
     const color = canFire ? 0xffffff : 0xff5252;
+
+    // Skip the (14-dash) redraw when the body, facing, ammo state, and range are
+    // visually unchanged — common while standing still aiming with the mouse.
+    const sig = `${Math.round(bx)},${Math.round(by)},${f.toFixed(2)},${canFire ? 1 : 0},${Math.round(range)}`;
+    if (sig === this.aimSig) return;
+    this.aimSig = sig;
+    this.aimLine.clear();
 
     // Start a little outside the body so the line doesn't sit under the monster.
     const start = 28;
@@ -943,6 +1031,14 @@ export class GameScene extends Phaser.Scene {
    * A faint pulsing line still marks the exact safe edge for readability.
    */
   private drawPoison() {
+    // The gas creeps slowly, so repainting its ~90 circles at the full frame
+    // rate is wasted work — especially on phones. Throttle to ~20fps; the
+    // Graphics object keeps its last paint on the frames we skip, so it looks
+    // identical. This is the single biggest per-frame client cost.
+    const now = performance.now();
+    if (now - this.lastPoisonAt < 50) return;
+    this.lastPoisonAt = now;
+
     const m = this.net.match;
     const g = this.poison;
     g.clear();
@@ -1034,6 +1130,10 @@ export class GameScene extends Phaser.Scene {
       // on-character ring/pips), so the corner only carries match + score info.
       const lines = [`Room ${this.roomCode}   ·   ${m.aliveCount} left`];
       if (me) lines.push(`Cubes ${me.cubes}   ·   Kills ${me.kills}`);
+      // Diagnostic line (P to toggle): frame rate + round-trip latency.
+      if (this.showPerf) {
+        lines.push(`FPS ${Math.round(this.game.loop.actualFps)}   ·   Ping ${this.net.pingMs}ms`);
+      }
       this.hud.setText(lines.join("\n"));
     }
 

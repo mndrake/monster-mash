@@ -44,8 +44,20 @@ import {
   segmentRectHit,
 } from "../geom";
 
-/** A Player object also remembers its own MapSchema key (sessionId). */
-type KeyedPlayer = Player & { __key?: string };
+/**
+ * A Player object also remembers its own MapSchema key (sessionId). For bots we
+ * stash a little throttled-AI scratch state here too (none of these are @type
+ * decorated, so they're server-only and never synced — same trick as __key).
+ */
+type KeyedPlayer = Player & {
+  __key?: string;
+  /** Cached nearest-enemy key from the last bot "think" (see updateBots). */
+  __botTargetKey?: string;
+  /** Cached line-of-sight result from the last bot "think". */
+  __botClearShot?: boolean;
+  /** When this bot may run its next (expensive) target+LOS recompute. */
+  __botNextThinkAt?: number;
+};
 
 /** Names cycled through for bots, so a roster of them reads clearly. */
 const BOT_NAMES = [
@@ -109,6 +121,25 @@ export class MatchRoom extends Room<MatchState> {
 
   /** Juice events accumulated during the current tick, flushed at its end. */
   private fx: FxEvent[] = [];
+
+  /**
+   * Cached combined obstacle list (static walls + every standing box). Boxes
+   * only change between ticks (added at round reset, removed when broken), so we
+   * rebuild this lazily on a dirty flag instead of allocating a fresh array of
+   * ~22 Rects on every call. moveWithWalls/hasLineOfSight/fireSuper/findClearSpawn
+   * all reuse it; none mutate the returned array. Big GC-pressure win on the
+   * single throttled vCPU we run on. (simulateProjectiles still reads live boxes
+   * so it sees mid-tick breaks — see there.)
+   */
+  private cachedObstacles: Rect[] = [];
+  private obstaclesDirty = true;
+
+  // ---- tick profiling (opt-in via PROFILE_TICKS=1) -------------------------
+  /** When set, the PLAYING tick is timed per-phase and logged every ~5s. */
+  private readonly profileTicks = process.env.PROFILE_TICKS === "1";
+  private profTotals: number[] = []; // total PLAYING-work durations (ms) in the window
+  private profPhase = { bots: 0, players: 0, projectiles: 0, poison: 0 };
+  private profLogAt = 0;
 
   onCreate(options: { roomCode?: string }) {
     this.state = new MatchState();
@@ -194,6 +225,12 @@ export class MatchRoom extends Room<MatchState> {
       this.removeBot();
     });
 
+    // Latency probe: echo the client's timestamp straight back so it can measure
+    // round-trip time for an on-screen ping readout. Pure diagnostic, no state.
+    this.onMessage("ping", (client, msg: { t?: number }) => {
+      client.send("pong", { t: msg?.t ?? 0 });
+    });
+
     // Hold a reserved seat longer than the 15s default. On a cold-started free
     // host (or a slow phone), the gap between the matchmaking HTTP reservation
     // and the WebSocket that consumes it can exceed 15s — which surfaces as a
@@ -233,6 +270,7 @@ export class MatchRoom extends Room<MatchState> {
     this.state.projectiles.clear();
     this.state.cubes.clear();
     this.state.boxes.clear();
+    this.obstaclesDirty = true;
     this.state.aliveCount = this.state.players.size;
   }
 
@@ -249,6 +287,7 @@ export class MatchRoom extends Room<MatchState> {
     this.state.projectiles.clear();
     this.state.cubes.clear();
     this.state.boxes.clear();
+    this.obstaclesDirty = true;
 
     // Safe zone starts as the whole arena.
     this.state.safeMinX = 0;
@@ -354,16 +393,61 @@ export class MatchRoom extends Room<MatchState> {
     }
 
     // ---- PLAYING ----
-    this.updateBots(); // write bot intent before the shared simulation runs
-    this.simulatePlayers(dt);
-    this.simulateProjectiles(dt);
-    this.applyPoison(dt);
-    this.recountAndMaybeEnd();
+    if (this.profileTicks) {
+      this.runPlayingTickProfiled(dt);
+    } else {
+      this.updateBots(); // write bot intent before the shared simulation runs
+      this.simulatePlayers(dt);
+      this.simulateProjectiles(dt);
+      this.applyPoison(dt);
+      this.recountAndMaybeEnd();
+    }
 
     // Flush this tick's juice events (one message, only if anything happened).
     if (this.fx.length) {
       this.broadcast("fx", this.fx);
       this.fx = [];
+    }
+  }
+
+  /**
+   * The PLAYING tick, timed per-phase, logging p50/p95/max + a phase breakdown
+   * every ~5s. Only used when PROFILE_TICKS=1, so the normal hot path stays
+   * allocation-free. The budget per tick is 1000/TICK_RATE ms (~33ms at 30Hz);
+   * if p95 approaches that with a full room, the server CPU is the bottleneck.
+   */
+  private runPlayingTickProfiled(dt: number) {
+    const t0 = performance.now();
+    this.updateBots();
+    const t1 = performance.now();
+    this.simulatePlayers(dt);
+    const t2 = performance.now();
+    this.simulateProjectiles(dt);
+    const t3 = performance.now();
+    this.applyPoison(dt);
+    this.recountAndMaybeEnd();
+    const t4 = performance.now();
+
+    this.profPhase.bots += t1 - t0;
+    this.profPhase.players += t2 - t1;
+    this.profPhase.projectiles += t3 - t2;
+    this.profPhase.poison += t4 - t3;
+    this.profTotals.push(t4 - t0);
+
+    if (this.now - this.profLogAt >= 5000 && this.profTotals.length) {
+      const sorted = this.profTotals.slice().sort((a, b) => a - b);
+      const pct = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
+      const n = this.profTotals.length;
+      const avg = (v: number) => (v / n).toFixed(2);
+      console.log(
+        `[tick] players=${this.state.players.size} proj=${this.state.projectiles.size} ` +
+          `n=${n} p50=${pct(0.5).toFixed(2)} p95=${pct(0.95).toFixed(2)} max=${sorted[sorted.length - 1].toFixed(2)}ms ` +
+          `| bots=${avg(this.profPhase.bots)} players=${avg(this.profPhase.players)} ` +
+          `proj=${avg(this.profPhase.projectiles)} poison=${avg(this.profPhase.poison)} (avg ms)`,
+      );
+      this.profTotals.length = 0;
+      this.profPhase = { bots: 0, players: 0, projectiles: 0, poison: 0 };
+      this.profLogAt = this.now;
     }
   }
 
@@ -585,9 +669,15 @@ export class MatchRoom extends Room<MatchState> {
    * they're broken, so the same collision routines just take this combined list.
    */
   private obstacleRects(): Rect[] {
-    const rects: Rect[] = this.walls.slice();
-    this.state.boxes.forEach((b) => rects.push({ x: b.x, y: b.y, w: b.w, h: b.h }));
-    return rects;
+    if (this.obstaclesDirty) {
+      const rects: Rect[] = this.walls.slice();
+      this.state.boxes.forEach((b) => rects.push({ x: b.x, y: b.y, w: b.w, h: b.h }));
+      this.cachedObstacles = rects;
+      this.obstaclesDirty = false;
+    }
+    // Callers treat this as read-only (resolveMove / segmentRectHit / circleRectOverlap
+    // never mutate it). Don't push into the returned array.
+    return this.cachedObstacles;
   }
 
   /**
@@ -941,6 +1031,7 @@ export class MatchRoom extends Room<MatchState> {
 
     // Broken: remove it and scatter its cubes around where it stood.
     this.state.boxes.delete(key);
+    this.obstaclesDirty = true; // a box vanished — invalidate the cached list
     for (let i = 0; i < BOX_CUBES; i++) {
       const a = Math.random() * Math.PI * 2;
       const d = i === 0 ? 0 : 18 + Math.random() * 14;
@@ -1020,6 +1111,7 @@ export class MatchRoom extends Room<MatchState> {
     box.hp = BOX_HP;
     box.maxHp = BOX_HP;
     this.state.boxes.set(String(this.nextId++), box);
+    this.obstaclesDirty = true; // the cached obstacle list now misses this box
   }
 
   /** True if (x, y) lies inside any wall, optionally padded outward. */
@@ -1179,9 +1271,23 @@ export class MatchRoom extends Room<MatchState> {
             : { aggro: 760, fire: 0.85, abilities: true };
 
       // 2) Engage the nearest enemy if it's within this bot's awareness range.
-      const target = this.nearestEnemy(p);
-      const distToTarget = target ? Math.hypot(target.x - p.x, target.y - p.y) : Infinity;
-      if (target && distToTarget <= diff.aggro) {
+      //    The O(n) nearest-enemy scan and the line-of-sight test are a bot's
+      //    costliest work, so recompute them only every ~120ms (jittered to
+      //    stagger bots across ticks) and reuse the result in between. Aim and
+      //    movement still use the live target position each tick, so tracking
+      //    stays smooth — only the *decision* cadence is throttled, which is
+      //    imperceptible next to human reaction time.
+      const bp = p as KeyedPlayer;
+      if (this.now >= (bp.__botNextThinkAt ?? 0)) {
+        const t = this.nearestEnemy(p);
+        bp.__botTargetKey = t ? this.keyOf(t) : undefined;
+        bp.__botClearShot = t ? this.hasLineOfSight(p, t, type.projectileRadius) : false;
+        bp.__botNextThinkAt = this.now + 100 + Math.random() * 60;
+      }
+      const target = bp.__botTargetKey ? this.state.players.get(bp.__botTargetKey) : undefined;
+      const distToTarget =
+        target && target.alive ? Math.hypot(target.x - p.x, target.y - p.y) : Infinity;
+      if (target && target.alive && distToTarget <= diff.aggro) {
         const tx = target.x - p.x;
         const ty = target.y - p.y;
         const dist = distToTarget || 1;
@@ -1211,7 +1317,7 @@ export class MatchRoom extends Room<MatchState> {
         // Fire only with a clear shot (no firing into walls) + a difficulty
         // "reliability" roll. Easy bots aim sloppily (jittered dir, can miss);
         // others auto-aim (0 vector) for an accurate shot.
-        const clearShot = this.hasLineOfSight(p, target, type.projectileRadius);
+        const clearShot = bp.__botClearShot ?? false;
         if (dist <= type.projectileRange && p.ammo >= 1 && clearShot && Math.random() < diff.fire) {
           if (p.botLevel === "easy") {
             const a = Math.atan2(uy, ux) + (Math.random() - 0.5) * 0.5;

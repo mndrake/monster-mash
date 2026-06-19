@@ -92,7 +92,14 @@ MONSTER_ORDER.forEach((id) => {
 let chosenGadget = 0;
 const gadgetWrap = document.createElement("div");
 gadgetWrap.id = "gadget-pick";
-monstersEl.insertAdjacentElement("afterend", gadgetWrap);
+// Place the chooser AFTER the whole "Pick your monster" <label>, not inside it.
+// #monsters lives inside that label, so inserting "afterend" of #monsters would
+// nest these gadget buttons within the label — and a <label> forwards clicks to
+// its first labelable control (the first monster card), which runs selectMonster
+// and resets chosenGadget to 0. That made the second gadget impossible to pick
+// (clicks set it to 1, then the label immediately reset it to 0).
+const monsterLabel = monstersEl.closest("label") ?? monstersEl;
+monsterLabel.insertAdjacentElement("afterend", gadgetWrap);
 function renderGadgets(id: string) {
   const g = lookOf(id).gadgets;
   gadgetWrap.innerHTML =
@@ -109,7 +116,10 @@ function renderGadgets(id: string) {
       .join("") +
     `</div>`;
   gadgetWrap.querySelectorAll(".gp-btn").forEach((b) =>
-    b.addEventListener("click", () => {
+    b.addEventListener("click", (e) => {
+      // Keep the click from bubbling / triggering any ancestor default action.
+      e.preventDefault();
+      e.stopPropagation();
       chosenGadget = Number((b as HTMLElement).dataset.i);
       renderGadgets(id);
     }),
@@ -117,8 +127,12 @@ function renderGadgets(id: string) {
 }
 
 function selectMonster(id: string) {
+  // Only reset the chosen gadget when the monster ACTUALLY changes. This also
+  // makes the picker robust to any stray re-selection of the current monster
+  // (e.g. a click that bubbles/forwards): re-selecting the same monster must not
+  // wipe a gadget the player just picked.
+  if (id !== chosenMonster) chosenGadget = 0;
   chosenMonster = id;
-  chosenGadget = 0; // default to the first gadget when switching monster
   monstersEl.querySelectorAll(".monster-card").forEach((c) => {
     c.classList.toggle("selected", (c as HTMLElement).dataset.id === id);
   });
